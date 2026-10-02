@@ -149,6 +149,33 @@
       </div></div>
     </div>
 
+    {% if history %}
+    {% set icons = {'on_time': ('bi-check-circle-fill status-good', 'Paid on time'), 'late': ('bi-clock-fill status-serious', 'Paid late'),
+                    'missed': ('bi-x-circle-fill status-critical', 'Missed'), 'pending': ('bi-hourglass-split text-secondary', 'Due — within grace period'),
+                    'upcoming': ('bi-circle text-secondary', 'Upcoming')} %}
+    <div class="card mb-3">
+      <div class="card-header bg-white d-flex flex-wrap justify-content-between gap-2">
+        <span class="fw-semibold">Payment history</span>
+        <span class="small text-secondary">
+          {% if history_summary.on_time_pct is not none %}{{ history_summary.on_time_pct }}% on time · {% endif %}
+          {{ history_summary.on_time }} on time · {{ history_summary.late }} late · {{ history_summary.missed }} missed</span>
+      </div>
+      <div class="card-body d-flex flex-wrap gap-1 pay-grid">
+        {% for h in history %}
+          {% set icon, label = icons[h.status] %}
+          <div class="pay-cell" title="{{ h.due|d }} · {{ h.amount|money }} · {{ label }}{% if h.paid_on %} ({{ h.paid_on|d }}{% if h.days_late and h.days_late > 0 %}, {{ h.days_late }} days late{% endif %}){% endif %}">
+            <i class="bi {{ icon }}" aria-label="{{ label }}"></i>
+            <div>{{ h.due.strftime('%b') }}<br><span class="text-secondary">{{ h.due.strftime('%y') if h.due.month == 1 or loop.first else '' }}</span></div>
+          </div>
+        {% endfor %}
+      </div>
+      <div class="px-3 pb-2 small text-secondary">
+        <i class="bi bi-check-circle-fill status-good"></i> on time (within 5 days of the due date) ·
+        <i class="bi bi-clock-fill status-serious"></i> late · <i class="bi bi-x-circle-fill status-critical"></i> missed ·
+        <i class="bi bi-hourglass-split"></i> due, in grace · <i class="bi bi-circle"></i> upcoming. Hover for dates.</div>
+    </div>
+    {% endif %}
+
     {% if current_user.can_edit %}
     <div class="card mb-3">
       <div class="card-header bg-white fw-semibold">Record a transaction</div>

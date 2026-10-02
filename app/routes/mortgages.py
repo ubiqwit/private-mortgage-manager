@@ -247,7 +247,11 @@ def detail(mortgage_id):
         lifetime=m.income_between(m.funded_date, local_today()),
         annual_interest=calc.money(m.balance() * m.effective_rate(prime) / 100),
     )
+    from ..services.history import payment_history, summary
+
+    history = payment_history(m, local_today(), prime)
     return render_template("mortgages/detail.html", m=m, s=stats, prime=prime, txn_types=TXN_TYPES,
+                           history=history, history_summary=summary(history),
                            doc_categories=DOCUMENT_CATEGORIES, activity_kinds=ACTIVITY_KINDS,
                            transactions=list(reversed(m.transactions)))
 
