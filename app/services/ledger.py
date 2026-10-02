@@ -18,7 +18,7 @@ def period_interest(mortgage, on: date, prime=None) -> Decimal:
 
 def suggest_split(mortgage, amount, on: date, txn_type: str = "payment", prime=None) -> dict:
     """Best-guess allocation of ``amount`` received on ``on``. Always sums to ``amount``
-    (with ``principal`` negated for advances)."""
+    (with ``principal`` negated for advances), except funding, which is all zero."""
     amount = calc.money(amount)
     interest = principal = fees = ZERO
     if txn_type == "payment":
@@ -36,6 +36,8 @@ def suggest_split(mortgage, amount, on: date, txn_type: str = "payment", prime=N
         interest = amount - principal
     elif txn_type == "advance":
         principal = -amount
+    elif txn_type == "funding":
+        pass  # cash out for the original principal: no balance or income effect
     elif txn_type == "fee":
         fees = amount
     else:  # adjustment — leave for the user to allocate

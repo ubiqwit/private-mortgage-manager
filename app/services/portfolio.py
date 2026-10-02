@@ -48,7 +48,7 @@ def dashboard_stats(today: date | None = None, prime=None) -> dict:
     m_start, m_end = month_bounds(today)
     expected_month = ZERO
     for r in rows:
-        expected_month += r["payment"] * len(r["m"].due_dates(start=m_start, end=m_end))
+        expected_month += r["m"].scheduled_total(start=m_start, end=m_end, prime=prime)
     collected_month = ZERO
     income_month = ZERO
     for m in all_mortgages:
@@ -70,7 +70,7 @@ def dashboard_stats(today: date | None = None, prime=None) -> dict:
     first = months[0]
     for t in MortgageTransaction.query.filter(MortgageTransaction.date >= first, MortgageTransaction.date <= today):
         key = t.date.strftime("%Y-%m")
-        if key in by_month and t.type != "advance":
+        if key in by_month and t.type not in ("advance", "funding"):
             by_month[key]["interest"] += Decimal(str(t.interest or 0))
             by_month[key]["fees"] += Decimal(str(t.fees or 0))
             by_month[key]["principal"] += Decimal(str(t.principal or 0))

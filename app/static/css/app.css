@@ -40,3 +40,13 @@ main { min-width: 0; }
   .stat-card .stat-value { font-size: 1.2rem; }
   .container-fluid.p-4 { padding: 1rem !important; }
 }
+.report-table td, .report-table th { font-size: .85rem; }
+@media print {
+  .sidebar, .navbar, .no-print, .alert, .btn { display: none !important; }
+  body { background: #fff; }
+  .card { box-shadow: none; border: 1px solid #dee2e6; break-inside: avoid; }
+  .container-fluid.p-4 { padding: 0 !important; }
+  a { color: inherit; text-decoration: none; }
+  .table-responsive { overflow: visible !important; }
+}
+.stat-card .stat-value-sm { font-size: 1.15rem; white-space: nowrap; }

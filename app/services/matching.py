@@ -80,7 +80,7 @@ def score(bank: BankTransaction, m: Mortgage, prime=None) -> Suggestion | None:
             reasons.append("borrower name in description")
 
     # --- how much -----------------------------------------------------------
-    txn_type = "payment" if deposit else "advance"
+    txn_type = "payment" if deposit else "funding"
     if deposit:
         payment = m.regular_payment(prime)
         balance = m.balance(as_of=bank.date)
@@ -132,11 +132,11 @@ def score(bank: BankTransaction, m: Mortgage, prime=None) -> Suggestion | None:
 
 def find_manual_twin(m: Mortgage, bank: BankTransaction, amount: Decimal):
     """A transaction entered by hand (no bank line yet) that this bank line evidences."""
-    want_advance = Decimal(str(bank.amount)) < 0
+    want_outflow = Decimal(str(bank.amount)) < 0
     for t in m.transactions:
         if t.bank_transaction is not None or t.bank_transaction_id is not None:
             continue
-        if (t.type == "advance") != want_advance:
+        if (t.type in ("advance", "funding")) != want_outflow:
             continue
         if calc.money(t.amount) == amount and abs((t.date - bank.date).days) <= 7:
             return t

@@ -5,7 +5,9 @@ Sign conventions for :class:`MortgageTransaction`
 ``amount`` is always the cash amount (positive). ``principal`` is signed from the
 borrower-balance point of view: a repayment *reduces* the balance and is stored
 positive; an additional advance *increases* the balance and is stored negative.
-So ``balance = original principal - sum(principal)``.
+So ``balance = original principal - sum(principal)``. A ``funding`` transaction
+records the cash sent out for the original principal (e.g. matched to the bank
+withdrawal) and has no balance effect, because ``principal_amount`` already counts it.
 """
 from __future__ import annotations
 
@@ -43,7 +45,8 @@ TXN_TYPES = [
     ("prepayment", "Principal prepayment"),
     ("fee", "Fee"),
     ("payout", "Payout / discharge"),
-    ("advance", "Advance to borrower"),
+    ("funding", "Funding (initial advance)"),
+    ("advance", "Additional advance"),
     ("nsf", "NSF / reversed payment"),
     ("adjustment", "Adjustment"),
 ]
@@ -174,6 +177,27 @@ class Mortgage(TimestampMixin, db.Model):
             )
         return calc.interest_only_payment(self.balance(), rate, self.compounding, self.payment_frequency)
 
+    def scheduled_payment(self, due: date, prime=None) -> Decimal:
+        """Payment owed on ``due``. Interest-only payments follow the balance outstanding
+        just before that date, so past dues stay correct after a prepayment."""
+        if self.payment_amount:
+            return calc.money(self.payment_amount)
+        rate = self.effective_rate(prime)
+        if self.payment_type == "amortizing" and self.amortization_months:
+            return calc.blended_payment(
+                self.principal_amount, rate, self.compounding, self.payment_frequency, self.amortization_months
+            )
+        return calc.interest_only_payment(
+            self.balance(as_of=due - timedelta(days=1)), rate, self.compounding, self.payment_frequency
+        )
+
+    def scheduled_total(self, start=None, end=None, prime=None) -> Decimal:
+        """Sum of scheduled payments due in the window, skipping dates on/after a payout."""
+        return sum(
+            (self.scheduled_payment(d, prime) for d in self.due_dates(start=start, end=end) if self.balance(as_of=d) > 0),
+            ZERO,
+        )
+
     def monthly_equivalent_payment(self, prime=None) -> Decimal:
         return calc.money(self.regular_payment(prime) * calc.periods_per_year(self.payment_frequency) / 12)
 
@@ -236,8 +260,7 @@ class Mortgage(TimestampMixin, db.Model):
         as_of = as_of or date.today()
         if self.status == "paid_out":
             return ZERO
-        due_count = len(self.due_dates(end=as_of - timedelta(days=grace_days)))
-        expected = self.regular_payment(prime) * due_count
+        expected = self.scheduled_total(end=as_of - timedelta(days=grace_days), prime=prime)
         return max(calc.money(expected - self.regular_received(as_of)), ZERO)
 
     def days_to_maturity(self, as_of: date | None = None) -> int:
@@ -279,7 +302,7 @@ class MortgageTransaction(TimestampMixin, db.Model):
     def signed_amount(self) -> Decimal:
         """Cash in (+) / out (-) from the lender's point of view."""
         amt = Decimal(str(self.amount))
-        return -amt if self.type in ("advance", "nsf") else amt
+        return -amt if self.type in ("advance", "nsf", "funding") else amt
 
 
 class StatementImport(db.Model):

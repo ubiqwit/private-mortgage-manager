@@ -19,7 +19,7 @@ db = SQLAlchemy()
 # Endpoints reachable without signing in.
 PUBLIC_ENDPOINTS = {"auth.login", "static", "health"}
 # POST endpoints a read-only user (e.g. your accountant) may still use.
-VIEWER_POST_ENDPOINTS = {"auth.logout", "auth.change_password", "reports.month_end"}
+VIEWER_POST_ENDPOINTS = {"auth.logout", "auth.change_password"}
 
 
 def _database_url(instance_path):

@@ -290,7 +290,10 @@ def transaction_from_form(m, form, txn=None):
     check = txn.interest + txn.fees + (txn.principal if txn.type != "advance" else -txn.principal)
     if txn.type == "nsf":
         check = -check
-    if check != txn.amount:
+    if txn.type == "funding":
+        if txn.interest or txn.principal or txn.fees:
+            raise FormError("A funding transaction only records the cash sent out — leave the split at zero")
+    elif check != txn.amount:
         raise FormError(f"Interest + principal + fees ({check}) must equal the amount ({txn.amount})")
     txn.notes = (form.get("notes") or "").strip() or None
     txn.mortgage = m

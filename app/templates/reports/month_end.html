@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}Month-end report {{ r.label }}{% endblock %}
+{% macro tile(label, value, sub=None) %}
+  <div class="card stat-card h-100 p-3"><div class="stat-label">{{ label }}</div>
+    <div class="stat-value stat-value-sm">{{ value }}</div>{% if sub %}<div class="stat-sub">{{ sub }}</div>{% endif %}</div>
+{% endmacro %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
+  <div>
+    <h1 class="h3 mb-0">Month-end report · {{ r.label }}</h1>
+    <div class="text-secondary small">Mortgage income for your accountant — {{ r.start|d }} to {{ r.end|d }}</div>
+  </div>
+  <div class="d-flex flex-wrap gap-2 no-print">
+    <form method="get" class="d-flex gap-2">
+      <select name="month" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Month">
+        {% for mo in months %}{% set v = mo.strftime('%Y-%m') %}<option value="{{ v }}" {% if v == selected %}selected{% endif %}>{{ mo.strftime('%B %Y') }}</option>{% endfor %}
+      </select>
+    </form>
+    <a class="btn btn-sm btn-success" href="{{ url_for('reports.month_end_xlsx', month=selected) }}"><i class="bi bi-file-earmark-excel"></i> Excel workbook</a>
+    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('reports.month_end_csv', month=selected) }}"><i class="bi bi-filetype-csv"></i> Transactions CSV</a>
+    <button class="btn btn-sm btn-outline-secondary" onclick="window.print()"><i class="bi bi-printer"></i> Print / PDF</button>
+  </div>
+</div>
+
+{% if r.bank.unmatched > 0 %}
+<div class="alert alert-warning d-flex gap-2 align-items-start no-print">
+  <i class="bi bi-exclamation-triangle-fill"></i>
+  <div>{{ r.bank.unmatched_lines|length }} deposit{{ '' if r.bank.unmatched_lines|length == 1 else 's' }} totalling {{ r.bank.unmatched|money }}
+    this month {{ 'is' if r.bank.unmatched_lines|length == 1 else 'are' }} not matched to a mortgage yet.
+    <a href="{{ url_for('statements.reconcile', month=selected) }}">Reconcile them</a> before sending this report, or mark them as not mortgage-related.</div>
+</div>
+{% elif not r.bank.count %}
+<div class="alert alert-info no-print small mb-3"><i class="bi bi-info-circle"></i> No bank statement has been imported for this month —
+  figures come from transactions recorded by hand. <a href="{{ url_for('statements.index') }}">Upload a statement</a> to reconcile.</div>
+{% endif %}
+
+<div class="row g-3 mb-3">
+  <div class="col-6 col-lg-2">{{ tile('Interest received', r.totals.interest|money) }}</div>
+  <div class="col-6 col-lg-2">{{ tile('Fees received', r.totals.fees|money) }}</div>
+  <div class="col-6 col-lg-2">{{ tile('Total income', r.totals.income|money, 'cash basis') }}</div>
+  <div class="col-6 col-lg-2">{{ tile('Interest earned', r.totals.accrued|money, 'accrual basis') }}</div>
+  <div class="col-6 col-lg-2">{{ tile('Principal repaid', r.totals.principal|money, ('New advances ' ~ (r.totals.advances|money)) if r.totals.advances else None) }}</div>
+  <div class="col-6 col-lg-2">{{ tile('Closing balance', r.totals.closing|money, 'opening ' ~ (r.totals.opening|money)) }}</div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header bg-white fw-semibold">Summary by mortgage</div>
+  <div class="table-responsive">
+  <table class="table table-sm mb-0 report-table">
+    <thead class="table-light"><tr>
+      <th>Ref</th><th>Borrower</th><th class="num">Rate</th><th class="num">Opening</th><th class="num">Principal repaid</th>
+      <th class="num">Closing</th><th class="num">Interest</th><th class="num">Fees</th><th class="num">Income</th>
+      {% if r.has_syndicated %}<th class="num">Your share</th>{% endif %}
+      <th class="num">Accrued</th><th class="num">Scheduled</th><th class="num">Variance</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for row in r.rows %}
+      <tr>
+        <td class="text-nowrap"><a href="{{ url_for('mortgages.detail', mortgage_id=row.m.id) }}">{{ row.m.reference }}</a></td>
+        <td>{{ row.m.borrower_name }}</td>
+        <td class="num">{{ row.rate|pct }}</td>
+        <td class="num">{{ row.opening|money }}</td>
+        <td class="num">{{ row.principal|money }}{% if row.advances %}<div class="small text-secondary">+{{ row.advances|money }} advanced</div>{% endif %}</td>
+        <td class="num">{{ row.closing|money }}</td>
+        <td class="num">{{ row.interest|money }}</td>
+        <td class="num">{{ row.fees|money }}</td>
+        <td class="num fw-semibold">{{ row.income|money }}</td>
+        {% if r.has_syndicated %}<td class="num">{{ row.your_income|money }} <span class="small text-secondary">({{ row.share_pct|pct(0) }})</span></td>{% endif %}
+        <td class="num">{{ row.accrued|money }}</td>
+        <td class="num">{{ row.expected|money }}</td>
+        <td class="num">{% if row.variance < 0 %}<i class="bi bi-exclamation-octagon-fill status-critical" title="Short"></i> {% endif %}{{ row.variance|money }}</td>
+        <td class="small">{{ row.status }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="14" class="text-center text-secondary py-4">No mortgages were active in {{ r.label }}.</td></tr>
+    {% endfor %}
+    </tbody>
+    {% if r.rows %}
+    <tfoot class="table-light fw-semibold"><tr>
+      <td colspan="3">Total</td><td class="num">{{ r.totals.opening|money }}</td><td class="num">{{ r.totals.principal|money }}</td>
+      <td class="num">{{ r.totals.closing|money }}</td><td class="num">{{ r.totals.interest|money }}</td><td class="num">{{ r.totals.fees|money }}</td>
+      <td class="num">{{ r.totals.income|money }}</td>{% if r.has_syndicated %}<td class="num">{{ r.totals.your_income|money }}</td>{% endif %}
+      <td class="num">{{ r.totals.accrued|money }}</td><td class="num">{{ r.totals.expected|money }}</td>
+      <td class="num">{{ r.totals.variance|money }}</td><td></td></tr></tfoot>
+    {% endif %}
+  </table>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-xl-8">
+    <div class="card h-100">
+      <div class="card-header bg-white fw-semibold">Transactions ({{ r.transactions|length }})</div>
+      <div class="table-responsive">
+      <table class="table table-sm mb-0 report-table">
+        <thead class="table-light"><tr><th>Date</th><th>Ref</th><th>Borrower</th><th>Type</th><th class="num">Amount</th>
+          <th class="num">Interest</th><th class="num">Principal</th><th class="num">Fees</th><th>Source</th></tr></thead>
+        <tbody>{% for t in r.transactions %}
+          <tr><td class="text-nowrap">{{ t.date.strftime('%b %d') }}</td><td class="text-nowrap">{{ t.mortgage.reference }}</td><td>{{ t.mortgage.borrower_name }}</td>
+            <td>{{ t.type_label }}</td><td class="num">{{ t.signed_amount|money }}</td><td class="num">{{ t.interest|money }}</td>
+            <td class="num">{{ t.principal|money }}</td><td class="num">{{ t.fees|money }}</td>
+            <td class="small">{% if t.bank_transaction %}<i class="bi bi-bank" title="{{ t.bank_transaction.description }}"></i> {{ t.bank_transaction.account_name }}{% else %}Manual{% endif %}</td></tr>
+        {% else %}<tr><td colspan="9" class="text-center text-secondary py-4">No transactions in {{ r.label }}.</td></tr>{% endfor %}</tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+  <div class="col-xl-4">
+    <div class="card h-100">
+      <div class="card-header bg-white fw-semibold">Bank reconciliation</div>
+      <table class="table table-sm mb-0">
+        <tr><td>Deposits imported ({{ r.bank.count }})</td><td class="num">{{ r.bank.total|money }}</td></tr>
+        <tr><td>Matched to mortgages</td><td class="num">{{ r.bank.matched|money }}</td></tr>
+        <tr><td>Not mortgage-related</td><td class="num">{{ r.bank.ignored|money }}</td></tr>
+        <tr class="fw-semibold"><td>{% if r.bank.unmatched > 0 %}<i class="bi bi-exclamation-triangle-fill status-warning"></i> {% endif %}Unmatched</td>
+          <td class="num">{{ r.bank.unmatched|money }}</td></tr>
+        <tr><td>Receipts recorded by hand (no bank line)</td><td class="num">{{ r.manual|length }}</td></tr>
+      </table>
+      {% if r.bank.unmatched_lines %}
+      <div class="card-body small pt-2">
+        {% for b in r.bank.unmatched_lines[:10] %}<div class="d-flex justify-content-between gap-2"><span class="desc-cell">{{ b.date.strftime('%b %d') }} · {{ b.description }}</span><span class="num">{{ b.amount|money }}</span></div>{% endfor %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header bg-white fw-semibold">Income year to date · {{ r.year }} <span class="small text-secondary fw-normal">interest + fees received</span></div>
+  <div class="table-responsive">
+  <table class="table table-sm mb-0 report-table">
+    <thead class="table-light"><tr><th>Ref</th><th>Borrower</th>{% for l in r.ytd.labels %}<th class="num">{{ l }}</th>{% endfor %}<th class="num">Total</th></tr></thead>
+    <tbody>{% for row in r.ytd.rows %}
+      <tr><td class="text-nowrap">{{ row.m.reference }}</td><td>{{ row.m.borrower_name }}</td>{% for v in row.months %}<td class="num">{{ v|money(false) if v else '—' }}</td>{% endfor %}
+        <td class="num fw-semibold">{{ row.total|money }}</td></tr>
+    {% else %}<tr><td colspan="{{ r.ytd.labels|length + 3 }}" class="text-center text-secondary py-3">No income recorded this year yet.</td></tr>{% endfor %}</tbody>
+    {% if r.ytd.rows %}<tfoot class="table-light fw-semibold"><tr><td colspan="2">Total</td>{% for v in r.ytd.month_totals %}<td class="num">{{ v|money(false) }}</td>{% endfor %}<td class="num">{{ r.ytd.total|money }}</td></tr></tfoot>{% endif %}
+  </table>
+  </div>
+</div>
+<p class="small text-secondary mt-3">Cash basis = money received during the month. Accrual basis = interest earned on each day's outstanding balance
+  at the contract rate, whether or not it has been paid. Generated {{ r.generated.strftime('%Y-%m-%d %H:%M') }} by {{ current_user.display_name }}.</p>
+{% endblock %}
