@@ -52,16 +52,15 @@ The app applies database migrations itself on start-up, so deploying a new versi
 all an upgrade takes. Uploaded statements are stored in the database, so ephemeral
 container disks are fine.
 
-### Option A — Render (simplest — see [DEPLOY.md](DEPLOY.md) for a click-by-click checklist)
+### Option A — free: Render + Neon (see [DEPLOY.md](DEPLOY.md) for click-by-click steps)
 
-1. In Render: **New → Blueprint** and pick this repository. `render.yaml` creates the
-   web service (Docker) and a PostgreSQL database.
-2. When prompted, enter `PMM_ADMIN_EMAIL` and `PMM_ADMIN_PASSWORD` — your first login is
-   created on start-up (you can remove them afterwards; the account stays).
-3. Open the `https://….onrender.com` address and sign in. Add a custom domain in Render if
-   you like. Use paid plans for the database — free databases are deleted after a while.
-4. Optional: add a Render **Cron Job** running `flask --app run refresh-market` (e.g.
-   hourly on weekdays) so rates are fresh even when nobody has the Market page open.
+1. Create a free PostgreSQL database on [Neon](https://neon.tech) and copy its connection string.
+2. In Render: **New → Blueprint** and pick this repository. `render.yaml` creates a free web
+   service and asks for `DATABASE_URL` (the Neon string), `PMM_ADMIN_EMAIL` and `PMM_ADMIN_PASSWORD`.
+3. Point a subdomain (e.g. `mortgages.yourdomain.com`) at the service with a CNAME record.
+
+The free app sleeps after 15 idle minutes (about a minute to wake). Moving to paid plans later is
+a plan change only.
 
 ### Option B — any Docker host (Fly.io, Railway, DigitalOcean, AWS, Azure…)
 

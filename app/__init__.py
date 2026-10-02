@@ -49,7 +49,8 @@ def create_app(test_config=None):
         PRODUCTION=production,
         SECRET_KEY=os.environ.get("PMM_SECRET_KEY") or os.environ.get("SECRET_KEY"),
         SQLALCHEMY_DATABASE_URI=_database_url(app.instance_path),
-        SQLALCHEMY_ENGINE_OPTIONS={"pool_pre_ping": True},
+        # Serverless databases (e.g. Neon) drop idle connections: test before use, recycle often.
+        SQLALCHEMY_ENGINE_OPTIONS={"pool_pre_ping": True, "pool_recycle": 280},
         MAX_CONTENT_LENGTH=20 * 1024 * 1024,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
