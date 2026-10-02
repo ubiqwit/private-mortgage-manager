@@ -92,3 +92,21 @@ def test_payout_month_has_no_payment_due_after_payout(client):
     row = r["rows"][0]
     assert row["closing"] == 0 and row["expected"] == 0 and row["interest"] == Decimal("1250.00")
     assert reports.month_end_report(2026, 6)["rows"] == []
+
+
+def test_annual_summary(client):
+    m = setup_book(client)
+    client.post(f"/mortgages/{m.id}/transactions", data={"type": "payment", "date": "2026-04-01", "amount": "1250"})
+    r = reports.annual_report(2026)
+    row = r["rows"][0]
+    assert row["opening"] == 0 and row["advances"] == Decimal("200000.00")
+    assert row["fees"] == Decimal("4000.00")
+    assert row["interest"] == Decimal("1666.67") * 2 + Decimal("1250.00")
+    assert row["principal"] == Decimal("50000.00") and row["closing"] == Decimal("150000.00")
+    assert reports.annual_report(2025)["rows"] == []
+    resp = client.get("/reports/annual?year=2026")
+    assert resp.status_code == 200 and b"Annual income summary" in resp.data
+    resp = client.get("/reports/annual.xlsx?year=2026")
+    wb = load_workbook(io.BytesIO(resp.data))
+    assert wb["Income 2026"]["A5"].value == "M-001"
+    assert client.get("/reports/annual?year=1900").status_code == 400

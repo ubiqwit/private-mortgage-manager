@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Annual summary {{ r.year }}{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
+  <div>
+    <a href="{{ url_for('reports.month_end') }}" class="small text-decoration-none"><i class="bi bi-arrow-left"></i> Month-end report</a>
+    <h1 class="h3 mb-0">Annual income summary · {{ r.year }}{% if r.partial %} <span class="badge text-bg-light align-middle fs-6">year to date</span>{% endif %}</h1>
+    <div class="text-secondary small">Mortgage income for your tax return and year-end accounts.</div>
+  </div>
+  <div class="d-flex gap-2 no-print">
+    <form method="get"><select name="year" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Year">
+      {% for y in years %}<option value="{{ y }}" {% if y == r.year %}selected{% endif %}>{{ y }}</option>{% endfor %}</select></form>
+    <a class="btn btn-sm btn-success" href="{{ url_for('reports.annual_xlsx', year=r.year) }}"><i class="bi bi-file-earmark-excel"></i> Excel</a>
+    <button class="btn btn-sm btn-outline-secondary" onclick="window.print()"><i class="bi bi-printer"></i> Print / PDF</button>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  {% for label, value, sub in [
+    ('Interest received', r.totals.interest, None), ('Fees received', r.totals.fees, None),
+    ('Total income', r.totals.income, 'cash basis'), ('Interest earned', r.totals.accrued, 'accrual basis'),
+    ('Principal repaid', r.totals.principal, None), ('New money advanced', r.totals.advances, None)] %}
+  <div class="col-6 col-lg-2"><div class="card stat-card h-100 p-3"><div class="stat-label">{{ label }}</div>
+    <div class="stat-value stat-value-sm">{{ value|money }}</div>{% if sub %}<div class="stat-sub">{{ sub }}</div>{% endif %}</div></div>
+  {% endfor %}
+</div>
+
+<div class="card mb-3">
+  <div class="table-responsive">
+  <table class="table table-sm mb-0 report-table">
+    <thead class="table-light"><tr><th>Ref</th><th>Borrower</th><th class="num">Opening</th><th class="num">Advanced</th>
+      <th class="num">Principal repaid</th><th class="num">Closing</th><th class="num">Interest</th><th class="num">Fees</th>
+      <th class="num">Income</th>{% if r.has_syndicated %}<th class="num">Your share</th>{% endif %}<th class="num">Accrued</th></tr></thead>
+    <tbody>
+    {% for row in r.rows %}
+      <tr><td class="text-nowrap"><a href="{{ url_for('mortgages.detail', mortgage_id=row.m.id) }}">{{ row.m.reference }}</a></td>
+        <td>{{ row.m.borrower_name }}</td><td class="num">{{ row.opening|money }}</td><td class="num">{{ row.advances|money }}</td>
+        <td class="num">{{ row.principal|money }}</td><td class="num">{{ row.closing|money }}</td><td class="num">{{ row.interest|money }}</td>
+        <td class="num">{{ row.fees|money }}</td><td class="num fw-semibold">{{ row.income|money }}</td>
+        {% if r.has_syndicated %}<td class="num">{{ row.your_income|money }} <span class="small text-secondary">({{ row.share_pct|pct(0) }})</span></td>{% endif %}
+        <td class="num">{{ row.accrued|money }}</td></tr>
+    {% else %}
+      <tr><td colspan="11" class="text-center text-secondary py-4">No mortgage activity in {{ r.year }}.</td></tr>
+    {% endfor %}
+    </tbody>
+    {% if r.rows %}
+    <tfoot class="table-light fw-semibold"><tr><td colspan="2">Total</td><td class="num">{{ r.totals.opening|money }}</td>
+      <td class="num">{{ r.totals.advances|money }}</td><td class="num">{{ r.totals.principal|money }}</td><td class="num">{{ r.totals.closing|money }}</td>
+      <td class="num">{{ r.totals.interest|money }}</td><td class="num">{{ r.totals.fees|money }}</td><td class="num">{{ r.totals.income|money }}</td>
+      {% if r.has_syndicated %}<td class="num">{{ r.totals.your_income|money }}</td>{% endif %}<td class="num">{{ r.totals.accrued|money }}</td></tr></tfoot>
+    {% endif %}
+  </table>
+  </div>
+</div>
+<p class="small text-secondary">Opening = balance on Jan 1, closing = Dec 31{% if r.partial %} (or today's balance — the year isn't over){% endif %}.
+  Interest earned (accrual) covers {{ 'Jan 1 to today' if r.partial else 'the full year' }}. This is a record of what the app holds, not tax advice — your accountant decides how it's reported.</p>
+{% endblock %}

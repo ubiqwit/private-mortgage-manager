@@ -17,6 +17,7 @@
         {% for mo in months %}{% set v = mo.strftime('%Y-%m') %}<option value="{{ v }}" {% if v == selected %}selected{% endif %}>{{ mo.strftime('%B %Y') }}</option>{% endfor %}
       </select>
     </form>
+    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('reports.annual', year=r.year) }}"><i class="bi bi-calendar3"></i> Annual summary</a>
     <a class="btn btn-sm btn-success" href="{{ url_for('reports.month_end_xlsx', month=selected) }}"><i class="bi bi-file-earmark-excel"></i> Excel workbook</a>
     <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('reports.month_end_csv', month=selected) }}"><i class="bi bi-filetype-csv"></i> Transactions CSV</a>
     <button class="btn btn-sm btn-outline-secondary" onclick="window.print()"><i class="bi bi-printer"></i> Print / PDF</button>

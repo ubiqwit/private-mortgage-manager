@@ -83,3 +83,26 @@ def month_end_csv():
     report = reports.month_end_report(year, month, latest_prime())
     return Response(reports.transactions_csv(report), mimetype="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="mortgage-transactions-{year:04d}-{month:02d}.csv"'})
+
+
+def _selected_year():
+    year = request.args.get("year", type=int) or local_today().year
+    if not 2000 <= year <= 2100:
+        abort(400)
+    return year
+
+
+@bp.route("/annual")
+def annual():
+    year = _selected_year()
+    report = reports.annual_report(year, latest_prime())
+    this_year = local_today().year
+    return render_template("reports/annual.html", r=report, years=list(range(this_year, this_year - 8, -1)))
+
+
+@bp.route("/annual.xlsx")
+def annual_xlsx():
+    year = _selected_year()
+    data = reports.annual_workbook(reports.annual_report(year, latest_prime()), prepared_by=g.user.display_name)
+    return Response(data, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f'attachment; filename="mortgage-income-{year}.xlsx"'})
