@@ -52,7 +52,7 @@ The app applies database migrations itself on start-up, so deploying a new versi
 all an upgrade takes. Uploaded statements are stored in the database, so ephemeral
 container disks are fine.
 
-### Option A — Render (simplest)
+### Option A — Render (simplest — see [DEPLOY.md](DEPLOY.md) for a click-by-click checklist)
 
 1. In Render: **New → Blueprint** and pick this repository. `render.yaml` creates the
    web service (Docker) and a PostgreSQL database.

@@ -1,11 +1,15 @@
 # One-click deploy on Render (https://render.com): New → Blueprint → pick this repo.
 # Creates the web service plus a managed PostgreSQL database with daily backups.
+# Render has no Canadian region; Ohio is the closest to Toronto. Web service and
+# database must be in the same region.
 services:
   - type: web
     name: private-mortgage-manager
     runtime: docker
     plan: starter
+    region: ohio
     healthCheckPath: /healthz
+    autoDeploy: true
     envVars:
       - key: PMM_ENV
         value: production
@@ -17,8 +21,8 @@ services:
         fromDatabase:
           name: mortgage-db
           property: connectionString
-      # Set these two in the Render dashboard before the first deploy to create your login,
-      # then you can remove them (the account stays in the database).
+      # Render asks for these two on the first deploy; they create your login.
+      # You can delete them afterwards (the account stays in the database).
       - key: PMM_ADMIN_EMAIL
         sync: false
       - key: PMM_ADMIN_PASSWORD
@@ -27,3 +31,6 @@ services:
 databases:
   - name: mortgage-db
     plan: basic-256mb
+    region: ohio
+    databaseName: mortgages
+    user: mortgages
