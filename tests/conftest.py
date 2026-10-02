@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from app import create_app, db
@@ -8,16 +10,20 @@ PASSWORD = "correct-horse-battery"
 
 @pytest.fixture
 def app(tmp_path):
+    # Set PMM_TEST_DATABASE_URL=postgresql+psycopg://… to run the suite against PostgreSQL.
+    url = os.environ.get("PMM_TEST_DATABASE_URL") or f"sqlite:///{tmp_path / 'test.db'}"
     app = create_app({
         "TESTING": True,
         "SECRET_KEY": "test",
-        "SQLALCHEMY_DATABASE_URI": f"sqlite:///{tmp_path / 'test.db'}",
+        "SQLALCHEMY_DATABASE_URI": url,
         "MARKET_FETCH_ENABLED": False,
         "WTF_CSRF_ENABLED": False,
     })
     with app.app_context():
         yield app
         db.session.remove()
+        if url.startswith("postgresql"):
+            db.drop_all()
 
 
 def make_user(email="owner@example.com", role="admin"):

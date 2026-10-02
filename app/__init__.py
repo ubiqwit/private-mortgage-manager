@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from flask import Flask, abort, g, redirect, request, session, url_for
+from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from markupsafe import Markup
 from sqlalchemy import exc as sa_exc
@@ -18,6 +19,8 @@ from .timeutil import utc_to_local
 warnings.filterwarnings("ignore", category=sa_exc.SAWarning, message=".*Decimal objects natively.*")
 
 db = SQLAlchemy()
+migrate = Migrate()
+MIGRATIONS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "migrations")
 
 # Endpoints reachable without signing in.
 PUBLIC_ENDPOINTS = {"auth.login", "static", "health"}
@@ -69,11 +72,18 @@ def create_app(test_config=None):
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
     db.init_app(app)
+    migrate.init_app(app, db, directory=MIGRATIONS_DIR, render_as_batch=True)
 
     from . import models  # noqa: F401  (register models)
 
     with app.app_context():
-        db.create_all()
+        if app.config.get("TESTING"):
+            db.create_all()
+        elif app.config.get("AUTO_MIGRATE", True):
+            # Bring the schema up to date on start-up (new installs and upgrades alike).
+            from flask_migrate import upgrade
+
+            upgrade(directory=MIGRATIONS_DIR)
         models.bootstrap_admin_from_env()
         # Don't share pooled connections with forked gunicorn workers (--preload).
         db.engine.dispose()

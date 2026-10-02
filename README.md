@@ -61,6 +61,21 @@ docker run -p 8000:8000 \
 Always put it behind HTTPS (all the platforms above do this for you). See
 `.env.example` for every setting.
 
+### Database upgrades
+
+The schema is managed with Alembic migrations (`migrations/`). The app applies any
+pending migrations automatically when it starts, so deploying a new version is enough.
+If you change `app/models.py`, generate a migration and commit it:
+
+```bash
+flask --app run db migrate -m "describe the change"
+flask --app run db upgrade
+```
+
+`tests/test_migrations.py` fails if the models and migrations drift apart. To run the
+test suite against PostgreSQL instead of SQLite, set
+`PMM_TEST_DATABASE_URL=postgresql+psycopg://user:pass@localhost/dbname`.
+
 ### Managing users from the command line
 
 ```bash
