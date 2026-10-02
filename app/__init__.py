@@ -169,6 +169,14 @@ def _register_filters(app):
             return "—"
         return f"{Decimal(str(value)):.{places}f}%"
 
+    @app.template_filter("filesize")
+    def filesize(n):
+        n = n or 0
+        for unit in ("bytes", "KB", "MB"):
+            if n < 1024 or unit == "MB":
+                return f"{n:.0f} {unit}" if unit == "bytes" else f"{n:.1f} {unit}"
+            n /= 1024
+
     @app.template_filter("d")
     def fmt_date(value):
         if not value:

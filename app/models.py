@@ -128,6 +128,12 @@ class Mortgage(TimestampMixin, db.Model):
         cascade="all, delete-orphan",
         order_by="TermHistory.valid_until",
     )
+    documents = db.relationship(
+        "MortgageDocument",
+        back_populates="mortgage",
+        cascade="all, delete-orphan",
+        order_by="MortgageDocument.uploaded_at.desc()",
+    )
 
     # ----- labels -------------------------------------------------------
     @property
@@ -323,6 +329,42 @@ class MortgageTransaction(TimestampMixin, db.Model):
         """Cash in (+) / out (-) from the lender's point of view."""
         amt = Decimal(str(self.amount))
         return -amt if self.type in ("advance", "nsf", "funding") else amt
+
+
+DOCUMENT_CATEGORIES = [
+    ("commitment", "Commitment letter / loan agreement"),
+    ("appraisal", "Appraisal"),
+    ("title", "Title / registration / charge"),
+    ("insurance", "Insurance"),
+    ("identity", "ID / KYC"),
+    ("renewal", "Renewal / amendment"),
+    ("discharge", "Payout statement / discharge"),
+    ("correspondence", "Correspondence"),
+    ("other", "Other"),
+]
+
+
+class MortgageDocument(db.Model):
+    """A file kept with a mortgage. Stored in the database so it survives redeploys
+    and is covered by the database's backups."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    mortgage_id = db.Column(db.Integer, db.ForeignKey("mortgage.id"), nullable=False, index=True)
+    filename = db.Column(db.String(255), nullable=False)
+    content_type = db.Column(db.String(120), nullable=False, default="application/octet-stream")
+    size = db.Column(db.Integer, nullable=False, default=0)
+    category = db.Column(db.String(30), nullable=False, default="other")
+    note = db.Column(db.String(300))
+    content = db.deferred(db.Column(db.LargeBinary, nullable=False))  # only loaded on download
+    uploaded_by_id = db.Column(db.Integer, db.ForeignKey("user.id"))
+    uploaded_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+
+    mortgage = db.relationship("Mortgage", back_populates="documents")
+    uploaded_by = db.relationship("User")
+
+    @property
+    def category_label(self):
+        return dict(DOCUMENT_CATEGORIES).get(self.category, self.category)
 
 
 class TermHistory(db.Model):

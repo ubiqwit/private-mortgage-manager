@@ -4,6 +4,9 @@ from alembic.migration import MigrationContext
 
 from app import create_app, db
 
+# Tables added by migrations after the baseline revision (keep in sync when adding tables).
+POST_BASELINE_TABLES = ["term_history", "mortgage_document"]
+
 
 def test_migrations_match_models(tmp_path):
     app = create_app({
@@ -24,8 +27,9 @@ def test_legacy_database_without_migration_history_is_adopted(tmp_path):
     url = f"sqlite:///{tmp_path / 'legacy.db'}"
     legacy = create_app({"TESTING": True, "SECRET_KEY": "t", "SQLALCHEMY_DATABASE_URI": url, "MARKET_FETCH_ENABLED": False})
     with legacy.app_context():
-        db.session.execute(sa.text("DROP TABLE term_history"))  # didn't exist back then
+        for table in POST_BASELINE_TABLES:  # didn't exist back then
+            db.session.execute(sa.text(f"DROP TABLE {table}"))
         db.session.commit()
     app = create_app({"SECRET_KEY": "t", "SQLALCHEMY_DATABASE_URI": url, "MARKET_FETCH_ENABLED": False})
     with app.app_context():
-        assert "term_history" in sa.inspect(db.engine).get_table_names()
+        assert set(POST_BASELINE_TABLES) <= set(sa.inspect(db.engine).get_table_names())

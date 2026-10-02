@@ -93,6 +93,42 @@
         {{ row('Bank keywords', m.keywords|join(', ')) }}
       </table>
     </div>
+    <div class="card mb-3" id="documents"><div class="card-header bg-white fw-semibold">Documents <span class="badge text-bg-light">{{ m.documents|length }}</span></div>
+      <ul class="list-group list-group-flush">
+        {% for doc in m.documents %}
+          <li class="list-group-item small d-flex justify-content-between align-items-start gap-2">
+            <div class="text-break">
+              <i class="bi {{ 'bi-file-earmark-pdf' if doc.filename.lower().endswith('.pdf') else 'bi-file-earmark' }}"></i>
+              <a href="{{ url_for('documents.download', doc_id=doc.id, view=1) }}" target="_blank" rel="noopener">{{ doc.filename }}</a>
+              <div class="text-secondary">{{ doc.category_label }} · {{ doc.size|filesize }} · {{ doc.uploaded_at|local('%Y-%m-%d') }}{% if doc.uploaded_by %} · {{ doc.uploaded_by.display_name }}{% endif %}</div>
+              {% if doc.note %}<div class="text-secondary fst-italic">{{ doc.note }}</div>{% endif %}
+            </div>
+            <div class="text-nowrap">
+              <a href="{{ url_for('documents.download', doc_id=doc.id) }}" title="Download"><i class="bi bi-download"></i></a>
+              {% if current_user.can_edit %}
+              <form method="post" action="{{ url_for('documents.delete', doc_id=doc.id) }}" class="d-inline" onsubmit="return confirm('Delete {{ doc.filename }}?')">
+                {{ csrf_field() }}<button class="btn btn-link btn-sm text-danger p-0 ms-1" title="Delete"><i class="bi bi-trash"></i></button></form>
+              {% endif %}
+            </div>
+          </li>
+        {% else %}
+          <li class="list-group-item small text-secondary">No documents yet.</li>
+        {% endfor %}
+      </ul>
+      {% if current_user.can_edit %}
+      <form method="post" action="{{ url_for('documents.upload', mortgage_id=m.id) }}" enctype="multipart/form-data" class="card-body border-top">
+        {{ csrf_field() }}
+        <input type="file" name="files" multiple class="form-control form-control-sm mb-2" required
+               accept=".pdf,.jpg,.jpeg,.png,.heic,.gif,.webp,.tif,.tiff,.doc,.docx,.xls,.xlsx,.csv,.txt,.msg,.eml">
+        <div class="d-flex gap-2">
+          <select name="category" class="form-select form-select-sm">{% for v, label in doc_categories %}<option value="{{ v }}">{{ label }}</option>{% endfor %}</select>
+          <button class="btn btn-sm btn-outline-primary text-nowrap"><i class="bi bi-upload"></i> Upload</button>
+        </div>
+        <input name="note" class="form-control form-control-sm mt-2" placeholder="Note (optional)">
+        <div class="form-text">PDF, images, Office files or email; up to 15 MB each.</div>
+      </form>
+      {% endif %}
+    </div>
     {% if m.notes %}<div class="card mb-3"><div class="card-header bg-white fw-semibold">Notes</div>
       <div class="card-body small" style="white-space:pre-wrap">{{ m.notes }}</div></div>{% endif %}
   </div>

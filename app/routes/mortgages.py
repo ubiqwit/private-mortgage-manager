@@ -8,6 +8,7 @@ from sqlalchemy import or_
 
 from .. import db
 from ..models import (
+    DOCUMENT_CATEGORIES,
     PROPERTY_TYPES,
     STATUSES,
     TXN_TYPES,
@@ -246,6 +247,7 @@ def detail(mortgage_id):
         annual_interest=calc.money(m.balance() * m.effective_rate(prime) / 100),
     )
     return render_template("mortgages/detail.html", m=m, s=stats, prime=prime, txn_types=TXN_TYPES,
+                           doc_categories=DOCUMENT_CATEGORIES,
                            transactions=list(reversed(m.transactions)))
 
 
