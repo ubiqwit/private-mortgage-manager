@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Check columns — {{ pending.filename }}{% endblock %}
+{% macro colselect(name, label, value, allow_none=True) %}
+  <div class="col-6 col-md-2">
+    <label class="form-label small mb-1">{{ label }}</label>
+    <select name="{{ name }}" class="form-select form-select-sm">
+      {% if allow_none %}<option value="">—</option>{% endif %}
+      {% for i, title in columns %}<option value="{{ i }}" {% if value == i %}selected{% endif %}>{{ title }}</option>{% endfor %}
+    </select>
+  </div>
+{% endmacro %}
+{% block content %}
+<a href="{{ url_for('statements.index') }}" class="small text-decoration-none"><i class="bi bi-arrow-left"></i> Bank statements</a>
+<h1 class="h3">Check the columns · {{ pending.filename }}</h1>
+<p class="text-secondary">We guessed which column is which. Check the preview below — deposits should be positive.
+  Adjust and press <em>Update preview</em> if anything looks wrong.</p>
+
+<form method="post" class="card p-3 mb-3">
+  {{ csrf_field() }}
+  <div class="row g-2 align-items-end">
+    {{ colselect('date', 'Date', m.date, false) }}
+    {{ colselect('description', 'Description', m.description[0] if m.description else none) }}
+    {{ colselect('description2', 'Description (2nd)', m.description[1] if m.description|length > 1 else none) }}
+    {{ colselect('amount', 'Amount (signed)', m.amount) }}
+    {{ colselect('debit', 'or: Debit / out', m.debit) }}
+    {{ colselect('credit', 'and: Credit / in', m.credit) }}
+    <div class="col-6 col-md-2">
+      <label class="form-label small mb-1">Date format</label>
+      <select name="date_format" class="form-select form-select-sm">
+        {% for f, label in date_formats %}<option value="{{ f }}" {% if m.date_format == f %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="form-check"><input class="form-check-input" type="checkbox" name="has_header" value="1" id="hh" {% if m.has_header %}checked{% endif %}>
+        <label class="form-check-label small" for="hh">Header on row</label></div>
+      <input type="number" min="0" name="header_row" value="{{ m.header_row }}" class="form-control form-control-sm" title="0 = first row">
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="form-check"><input class="form-check-input" type="checkbox" name="flip_sign" value="1" id="fs" {% if m.flip_sign %}checked{% endif %}>
+        <label class="form-check-label small" for="fs">Flip signs (deposits show negative)</label></div>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small mb-1">Account name</label>
+      <input name="account_name" value="{{ account }}" class="form-control form-control-sm" placeholder="e.g. RBC Mortgage Chequing">
+    </div>
+    <div class="col-md-3">
+      <div class="form-check"><input class="form-check-input" type="checkbox" name="auto_match" value="1" id="am" {% if auto %}checked{% endif %}>
+        <label class="form-check-label small" for="am">Auto-match high-confidence deposits</label></div>
+    </div>
+  </div>
+  <div class="d-flex gap-2 mt-3">
+    <button name="action" value="preview" class="btn btn-sm btn-outline-secondary">Update preview</button>
+    <button name="action" value="import" class="btn btn-sm btn-primary" {% if error %}disabled{% endif %}>
+      Import {{ lines|length }} line{{ '' if lines|length == 1 else 's' }}</button>
+  </div>
+</form>
+
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+
+<div class="row g-3">
+  <div class="col-xl-7">
+    <div class="card">
+      <div class="card-header bg-white d-flex justify-content-between"><span class="fw-semibold">Preview (as it will be imported)</span>
+        <span class="small text-secondary">In {{ deposits|money }} · out {{ withdrawals|money }}</span></div>
+      <div class="table-responsive"><table class="table table-sm mb-0">
+        <thead class="table-light"><tr><th>Date</th><th>Description</th><th class="num">Amount</th></tr></thead>
+        <tbody>{% for ln in lines[:25] %}
+          <tr><td class="text-nowrap">{{ ln.date|d }}</td><td class="desc-cell" title="{{ ln.description }}">{{ ln.description }}</td>
+            <td class="num {% if ln.amount < 0 %}text-danger{% endif %}">{{ ln.amount|money }}</td></tr>
+        {% endfor %}
+        {% if lines|length > 25 %}<tr><td colspan="3" class="text-secondary small">…and {{ lines|length - 25 }} more</td></tr>{% endif %}
+        </tbody></table></div>
+    </div>
+    {% if warnings %}<div class="alert alert-warning small mt-3 mb-0"><strong>{{ warnings|length }} row(s) skipped:</strong>
+      {% for w in warnings[:8] %}<br>{{ w }}{% endfor %}{% if warnings|length > 8 %}<br>…{% endif %}</div>{% endif %}
+  </div>
+  <div class="col-xl-5">
+    <div class="card">
+      <div class="card-header bg-white fw-semibold">Raw file (first rows)</div>
+      <div class="table-responsive"><table class="table table-sm table-bordered mb-0 small">
+        <tbody>{% for r in rows %}<tr>{% for c in r %}<td class="text-nowrap">{{ c }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+      </table></div>
+    </div>
+  </div>
+</div>
+{% endblock %}

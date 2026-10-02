@@ -265,6 +265,7 @@ class MortgageTransaction(TimestampMixin, db.Model):
     principal = db.Column(db.Numeric(14, 2), default=0)
     fees = db.Column(db.Numeric(14, 2), default=0)
     bank_transaction_id = db.Column(db.Integer, db.ForeignKey("bank_transaction.id"), index=True)
+    source = db.Column(db.String(10), nullable=False, default="manual")  # manual | bank (created from a bank line)
     notes = db.Column(db.String(500))
 
     mortgage = db.relationship("Mortgage", back_populates="transactions")

@@ -1,0 +1,4 @@
+Account Type,Account Number,Transaction Date,Cheque Number,Description 1,Description 2,CAD$,USD$
+Chequing,01234-5678901,1/2/2026,,E-TRANSFER - AUTODEPOSIT,JANE SMITH,2289.58,
+Chequing,01234-5678901,1/15/2026,,MONTHLY FEE,,-4.95,
+Chequing,01234-5678901,1/31/2026,,MOBILE CHEQUE DEPOSIT,,9750.00,

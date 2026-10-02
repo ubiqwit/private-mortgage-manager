@@ -16,7 +16,7 @@ from ..models import (
     audit,
     next_reference,
 )
-from ..services import calc, ledger
+from ..services import calc, ledger, matching
 from ..services.market import latest_prime
 
 bp = Blueprint("mortgages", __name__, url_prefix="/mortgages")
@@ -322,10 +322,14 @@ def delete_transaction(txn_id):
     m = txn.mortgage
     bank = txn.bank_transaction
     audit("transaction_deleted", f"{m.reference} {txn.type} {txn.amount} on {txn.date}")
+    if bank is not None:
+        bank.mortgage_transactions.remove(txn)
+    m.transactions.remove(txn)
     db.session.delete(txn)
     db.session.flush()
-    if bank is not None and not bank.mortgage_transactions:
-        bank.status = "unmatched"
+    matching.reopen_if_needed(m)
+    if bank is not None:
+        bank.status = "matched" if matching.remaining(bank) <= 0 else "unmatched"
     db.session.commit()
     flash("Transaction removed." + (" The bank line is back in the unmatched queue." if bank else ""), "success")
     return redirect(url_for("mortgages.detail", mortgage_id=m.id))

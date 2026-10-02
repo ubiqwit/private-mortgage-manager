@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Reconcile — Private Mortgage Manager{% endblock %}
+{% set here = request.full_path %}
+{% block content %}
+<a href="{{ url_for('statements.index') }}" class="small text-decoration-none"><i class="bi bi-arrow-left"></i> Bank statements</a>
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h1 class="h3 mb-0">Reconcile bank lines</h1>
+  {% if current_user.can_edit and high and status == 'unmatched' %}
+  <form method="post" action="{{ url_for('statements.auto_match') }}">{{ csrf_field() }}
+    <input type="hidden" name="next" value="{{ here }}">
+    <button class="btn btn-success"><i class="bi bi-check2-all"></i> Accept {{ high }} high-confidence match{{ '' if high == 1 else 'es' }}</button>
+  </form>
+  {% endif %}
+</div>
+
+<ul class="nav nav-tabs mb-3">
+  {% for value, label in [('unmatched', 'To match'), ('matched', 'Matched'), ('ignored', 'Ignored'), ('all', 'All')] %}
+    <li class="nav-item"><a class="nav-link {% if status == value %}active{% endif %}"
+      href="{{ url_for('statements.reconcile', status=value, direction=direction, statement=statement_id, month=month) }}">{{ label }}
+      {% if value != 'all' and counts.get(value) %}<span class="badge text-bg-light">{{ counts.get(value) }}</span>{% endif %}</a></li>
+  {% endfor %}
+</ul>
+
+<form class="row g-2 mb-3" method="get">
+  <input type="hidden" name="status" value="{{ status }}">
+  <div class="col-auto"><select name="direction" class="form-select form-select-sm" onchange="this.form.submit()">
+    <option value="in" {% if direction == 'in' %}selected{% endif %}>Deposits only</option>
+    <option value="out" {% if direction == 'out' %}selected{% endif %}>Withdrawals only</option>
+    <option value="all" {% if direction == 'all' %}selected{% endif %}>Deposits &amp; withdrawals</option>
+  </select></div>
+  <div class="col-auto"><input type="month" name="month" value="{{ month }}" class="form-control form-control-sm" onchange="this.form.submit()"></div>
+  <div class="col-auto"><select name="statement" class="form-select form-select-sm" onchange="this.form.submit()">
+    <option value="">All statements</option>
+    {% for s in statements %}<option value="{{ s.id }}" {% if statement_id == s.id %}selected{% endif %}>{{ s.filename }} ({{ s.account_name }})</option>{% endfor %}
+  </select></div>
+  {% if month or statement_id %}<div class="col-auto"><a class="btn btn-sm btn-link" href="{{ url_for('statements.reconcile', status=status, direction=direction) }}">Clear filters</a></div>{% endif %}
+</form>
+
+<div class="card">
+  <div class="table-responsive">
+  <table class="table table-sm align-middle mb-0">
+    <thead class="table-light"><tr><th>Date</th><th>Description</th><th class="num">Amount</th><th style="min-width:420px">Match</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      {% set bt = r.bt %}
+      <tr>
+        <td class="text-nowrap">{{ bt.date|d }}<div class="small text-secondary">{{ bt.account_name }}</div></td>
+        <td class="desc-cell" title="{{ bt.description }}">{{ bt.description }}</td>
+        <td class="num {% if bt.amount < 0 %}text-danger{% endif %}">{{ bt.amount|money }}
+          {% if bt.status == 'unmatched' and r.remaining != (bt.amount|abs) %}<div class="small text-secondary">{{ r.remaining|money }} left</div>{% endif %}</td>
+        <td>
+        {% if bt.mortgage_transactions %}
+          {% for t in bt.mortgage_transactions %}
+            <div class="small"><i class="bi bi-check-circle-fill status-good"></i>
+              <a href="{{ url_for('mortgages.detail', mortgage_id=t.mortgage.id) }}">{{ t.mortgage.reference }} · {{ t.mortgage.borrower_name }}</a>
+              — {{ t.type_label }} {{ t.amount|money }}
+              <span class="text-secondary">(int {{ t.interest|money }}, prin {{ t.principal|money }}, fees {{ t.fees|money }})</span></div>
+          {% endfor %}
+        {% endif %}
+
+        {% if bt.status == 'unmatched' and current_user.can_edit %}
+          {% for s in r.suggestions %}
+            <form method="post" action="{{ url_for('statements.allocate', line_id=bt.id) }}" class="d-flex align-items-center gap-2 mb-1">
+              {{ csrf_field() }}<input type="hidden" name="next" value="{{ here }}">
+              <input type="hidden" name="mortgage_id" value="{{ s.mortgage.id }}"><input type="hidden" name="type" value="{{ s.txn_type }}">
+              {% if s.existing %}<input type="hidden" name="existing_id" value="{{ s.existing.id }}">{% endif %}
+              <button class="btn btn-sm {{ 'btn-success' if s.confidence == 'high' and loop.first else 'btn-outline-success' }}" title="{{ s.reasons|join('; ') }}">
+                <i class="bi {{ 'bi-link-45deg' if s.existing else 'bi-check-lg' }}"></i> {{ s.mortgage.reference }} · {{ s.mortgage.borrower_name }} · {{ 'link existing ' if s.existing }}{{ s.txn_type }}</button>
+              <span class="badge {{ {'high': 'text-bg-success', 'medium': 'text-bg-warning', 'low': 'text-bg-light'}[s.confidence] }}">{{ s.confidence }}</span>
+              <span class="small text-secondary d-none d-xl-inline">{{ s.reasons|join('; ') }}</span>
+            </form>
+          {% endfor %}
+          <details class="small mt-1">
+            <summary class="text-secondary">{{ 'Choose a different mortgage / split' if r.suggestions else 'Choose mortgage' }}</summary>
+            <form method="post" action="{{ url_for('statements.allocate', line_id=bt.id) }}" class="row g-1 mt-1">
+              {{ csrf_field() }}<input type="hidden" name="next" value="{{ here }}">
+              <div class="col-md-5"><select name="mortgage_id" class="form-select form-select-sm" required>
+                <option value="">Mortgage…</option>
+                {% for m in mortgages %}<option value="{{ m.id }}">{{ m.reference }} · {{ m.borrower_name }}{% if m.status == 'paid_out' %} (paid out){% endif %}</option>{% endfor %}
+              </select></div>
+              <div class="col-md-3"><select name="type" class="form-select form-select-sm">
+                {% for v, t in txn_types %}<option value="{{ v }}" {% if (bt.amount < 0 and v == 'advance') or (bt.amount > 0 and v == 'payment') %}selected{% endif %}>{{ t }}</option>{% endfor %}
+              </select></div>
+              <div class="col-md-2"><input name="amount" type="number" step="0.01" min="0.01" value="{{ r.remaining }}" class="form-control form-control-sm" title="Allocate part of the line to split it across mortgages"></div>
+              <div class="col-md-2"><button class="btn btn-sm btn-primary w-100">Match</button></div>
+              <div class="col-12 form-check ms-1"><input class="form-check-input" type="checkbox" name="remember" value="1" id="rem{{ bt.id }}" checked>
+                <label class="form-check-label" for="rem{{ bt.id }}">Remember this description for this mortgage</label></div>
+            </form>
+          </details>
+          <form method="post" action="{{ url_for('statements.ignore', line_id=bt.id) }}" class="d-inline">
+            {{ csrf_field() }}<input type="hidden" name="next" value="{{ here }}">
+            <button class="btn btn-link btn-sm p-0 text-secondary" title="Not mortgage-related (personal, transfer…)">Not a mortgage item — ignore</button>
+          </form>
+        {% elif bt.status == 'ignored' %}
+          <span class="small text-secondary">Ignored.</span>
+        {% endif %}
+
+        {% if (bt.status != 'unmatched' or bt.mortgage_transactions) and current_user.can_edit %}
+          <form method="post" action="{{ url_for('statements.restore', line_id=bt.id) }}" class="d-inline">
+            {{ csrf_field() }}<input type="hidden" name="next" value="{{ here }}">
+            <button class="btn btn-link btn-sm p-0" {% if bt.mortgage_transactions %}onclick="return confirm('Remove the mortgage transaction(s) recorded from this line?')"{% endif %}>
+              {{ 'Unmatch' if bt.mortgage_transactions else 'Restore' }}</button>
+          </form>
+        {% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="4" class="text-center text-secondary py-5">
+        {% if status == 'unmatched' %}<i class="bi bi-check-circle-fill status-good"></i> Everything here is reconciled.{% else %}Nothing to show.{% endif %}
+      </td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}

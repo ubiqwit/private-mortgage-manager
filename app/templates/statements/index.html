@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Bank statements — Private Mortgage Manager{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h1 class="h3 mb-0">Bank statements</h1>
+  <a class="btn btn-outline-primary" href="{{ url_for('statements.reconcile') }}">
+    <i class="bi bi-arrow-left-right"></i> Reconcile deposits
+    {% if unmatched_deposits %}<span class="badge text-bg-danger">{{ unmatched_deposits }}</span>{% endif %}</a>
+</div>
+
+<div class="row g-3">
+  {% if current_user.can_edit %}
+  <div class="col-lg-5">
+    <form method="post" action="{{ url_for('statements.upload') }}" enctype="multipart/form-data" class="card p-4">
+      {{ csrf_field() }}
+      <h2 class="h6">Upload a statement</h2>
+      <p class="small text-secondary">Download a CSV, Excel or OFX/QFX (Quicken / QuickBooks) export from online banking.
+        Re-uploading overlapping periods is safe — lines already imported are skipped.</p>
+      <input type="file" name="file" class="form-control mb-3" accept=".csv,.txt,.xlsx,.ofx,.qfx,.qbo" required>
+      <label class="form-label small mb-1">Account name</label>
+      <input name="account_name" class="form-control mb-3" list="accounts" placeholder="e.g. RBC Mortgage Chequing">
+      <datalist id="accounts">{% for a in accounts %}<option value="{{ a }}">{% endfor %}</datalist>
+      <div class="form-check mb-3">
+        <input class="form-check-input" type="checkbox" name="auto_match" value="1" id="am" checked>
+        <label class="form-check-label small" for="am">Automatically match high-confidence deposits (you can review and undo them)</label>
+      </div>
+      <button class="btn btn-primary"><i class="bi bi-upload"></i> Upload</button>
+    </form>
+  </div>
+  {% endif %}
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header bg-white fw-semibold">Imported statements</div>
+      <div class="table-responsive">
+      <table class="table table-sm mb-0">
+        <thead class="table-light"><tr><th>File</th><th>Account</th><th>Period</th><th class="num">Lines</th><th class="num">Matched</th><th>Imported</th><th></th></tr></thead>
+        <tbody>
+        {% for imp in imports %}
+          <tr>
+            <td><a href="{{ url_for('statements.reconcile', statement=imp.id, status='all', direction='all') }}">{{ imp.filename }}</a></td>
+            <td>{{ imp.account_name }}</td>
+            <td class="small text-nowrap">{{ imp.period_start.strftime('%b %d') if imp.period_start }} – {{ imp.period_end|d }}</td>
+            <td class="num">{{ imp.row_count }}{% if imp.duplicate_count %} <span class="text-secondary small" title="Already imported, skipped">(+{{ imp.duplicate_count }} dup)</span>{% endif %}</td>
+            <td class="num">{{ matched_counts.get(imp.id, 0) }}</td>
+            <td class="small text-nowrap">{{ imp.imported_at.strftime('%Y-%m-%d') }}</td>
+            <td class="text-end">{% if current_user.can_edit %}
+              <form method="post" action="{{ url_for('statements.delete_statement', statement_id=imp.id) }}"
+                    onsubmit="return confirm('Delete this import? Any mortgage payments recorded from its lines will also be removed.')">
+                {{ csrf_field() }}<button class="btn btn-link btn-sm text-danger p-0" title="Delete import"><i class="bi bi-trash"></i></button></form>
+            {% endif %}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="7" class="text-center text-secondary py-4">No statements imported yet.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
