@@ -11,7 +11,7 @@ withdrawal) and has no balance effect, because ``principal_amount`` already coun
 """
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 from sqlalchemy import func
@@ -19,6 +19,7 @@ from sqlalchemy import func
 from . import db
 from .services import calc
 from .timeutil import today as local_today
+from .timeutil import utcnow
 
 ZERO = Decimal("0.00")
 
@@ -58,8 +59,8 @@ ARREARS_GRACE_DAYS = 5
 
 
 class TimestampMixin:
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 
 
 class Mortgage(TimestampMixin, db.Model):
@@ -181,7 +182,9 @@ class Mortgage(TimestampMixin, db.Model):
             if on is not None:
                 from .services.market import prime_on
 
-                prime = prime_on(on) if prime_on(on) is not None else prime
+                historical = prime_on(on)
+                if historical is not None:
+                    prime = historical
             if prime is not None:
                 rate = Decimal(str(prime)) + Decimal(str(terms.prime_spread))
                 if terms.rate_floor is not None:
@@ -339,7 +342,7 @@ class TermHistory(db.Model):
     amortization_months = db.Column(db.Integer)
     maturity_date = db.Column(db.Date, nullable=False)  # maturity before the change
     note = db.Column(db.String(500))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
 
     mortgage = db.relationship("Mortgage", back_populates="term_history")
 
@@ -360,7 +363,7 @@ class StatementImport(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     filename = db.Column(db.String(255), nullable=False)
     account_name = db.Column(db.String(120))
-    imported_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    imported_at = db.Column(db.DateTime, default=utcnow, nullable=False)
     row_count = db.Column(db.Integer, default=0)
     duplicate_count = db.Column(db.Integer, default=0)
     period_start = db.Column(db.Date)
@@ -378,7 +381,7 @@ class BankTransaction(db.Model):
     amount = db.Column(db.Numeric(14, 2), nullable=False)  # + deposit / - withdrawal
     fingerprint = db.Column(db.String(64), unique=True, nullable=False)
     status = db.Column(db.String(20), default="unmatched", nullable=False, index=True)  # unmatched|matched|ignored
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
 
     statement = db.relationship("StatementImport", back_populates="transactions")
     mortgage_transactions = db.relationship("MortgageTransaction", back_populates="bank_transaction")
@@ -486,7 +489,7 @@ class User(TimestampMixin, db.Model):
 
 class AuditLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    at = db.Column(db.DateTime, default=utcnow, nullable=False, index=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
     action = db.Column(db.String(80), nullable=False)
     detail = db.Column(db.String(1000))
@@ -513,7 +516,7 @@ class PendingUpload(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
     filename = db.Column(db.String(255), nullable=False)
     content = db.Column(db.LargeBinary, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
 
 
 def bootstrap_admin_from_env():

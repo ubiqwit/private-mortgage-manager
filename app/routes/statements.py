@@ -12,6 +12,7 @@ from ..services import matching
 from ..services import statements as st
 from ..services.market import latest_prime
 from ..services.periods import PeriodClosed, closed_through, ensure_open, is_closed
+from ..timeutil import utcnow
 
 bp = Blueprint("statements", __name__, url_prefix="/statements")
 
@@ -89,7 +90,7 @@ def upload():
         return redirect(url_for("statements.index"))
 
     # Keep the raw file in the database until the column mapping is confirmed.
-    PendingUpload.query.filter(PendingUpload.created_at < datetime.utcnow() - timedelta(days=1)).delete()
+    PendingUpload.query.filter(PendingUpload.created_at < utcnow() - timedelta(days=1)).delete()
     token = secrets.token_urlsafe(24)
     db.session.add(PendingUpload(token=token, user_id=g.user.id, filename=f.filename[:255], content=content))
     db.session.commit()

@@ -25,3 +25,8 @@ def utc_to_local(value: datetime | None) -> datetime | None:
     if value is None:
         return None
     return value.replace(tzinfo=timezone.utc).astimezone(tz()).replace(tzinfo=None)
+
+
+def utcnow() -> datetime:
+    """Naive UTC timestamp for storage (datetime.utcnow() is deprecated from Python 3.12)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)

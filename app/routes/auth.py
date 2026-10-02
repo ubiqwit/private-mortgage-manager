@@ -1,10 +1,11 @@
 """Sign-in, password changes and user management."""
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from flask import Blueprint, Response, abort, flash, g, redirect, render_template, request, session, url_for
 
 from .. import db
 from ..models import ROLES, AuditLog, User, audit
+from ..timeutil import utcnow
 
 bp = Blueprint("auth", __name__)
 
@@ -30,7 +31,7 @@ LOCKOUT = timedelta(minutes=15)
 
 
 def _recent_failures(email, ip):
-    since = datetime.utcnow() - LOCKOUT
+    since = utcnow() - LOCKOUT
     q = AuditLog.query.filter(AuditLog.action == "login_failed", AuditLog.at >= since)
     by_email = q.filter(AuditLog.detail == email).count()
     by_ip = q.filter(AuditLog.ip == ip).count() if ip else 0
@@ -54,7 +55,7 @@ def login():
             session.permanent = True
             session["user_id"] = user.id
             session["pw_stamp"] = user.password_stamp
-            user.last_login_at = datetime.utcnow()
+            user.last_login_at = utcnow()
             g.user = user
             audit("login", email)
             db.session.commit()

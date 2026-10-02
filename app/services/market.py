@@ -17,6 +17,7 @@ from dateutil.relativedelta import relativedelta
 from .. import db
 from ..models import MarketObservation, NewsItem, Setting
 from ..timeutil import today as local_today
+from ..timeutil import utcnow
 
 VALET = "https://www.bankofcanada.ca/valet/observations/{series}/json"
 PRIME_SERIES = "V80691311"  # Chartered bank prime business rate (weekly)
@@ -168,7 +169,7 @@ def last_fetch():
 
 def is_stale():
     fetched = last_fetch()
-    return fetched is None or datetime.utcnow() - fetched > STALE_AFTER
+    return fetched is None or utcnow() - fetched > STALE_AFTER
 
 
 def feeds():
@@ -289,7 +290,7 @@ def store_news(items) -> int:
                                 published=i["published"], summary=i["summary"]))
         added += 1
     # Keep the table small.
-    cutoff = datetime.utcnow() - timedelta(days=120)
+    cutoff = utcnow() - timedelta(days=120)
     NewsItem.query.filter(NewsItem.published.isnot(None), NewsItem.published < cutoff).delete()
     return added
 
@@ -347,7 +348,7 @@ def refresh(force: bool = False, get=None) -> dict:
         except Exception as exc:  # noqa: BLE001 — malformed payloads are reported, not fatal
             result["errors"].append(f"{name}: could not read the response ({_short_error(exc)})")
 
-    Setting.set("market_fetched_at", datetime.utcnow().isoformat(timespec="seconds"))
+    Setting.set("market_fetched_at", utcnow().isoformat(timespec="seconds"))
     Setting.set("market_last_errors", "\n".join(result["errors"]))
     db.session.commit()
     return result
