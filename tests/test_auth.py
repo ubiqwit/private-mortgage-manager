@@ -75,3 +75,12 @@ def test_export_admin_only(app):
     c = app.test_client()
     c.post("/login", data={"email": "viewer@example.com", "password": PASSWORD})
     assert c.get("/export/all.xlsx").status_code == 403
+
+
+def test_engine_options_handle_neon_pooler():
+    from app import _engine_options
+
+    pooled = _engine_options("postgresql://u:p@ep-cool-1-pooler.us-east-2.aws.neon.tech/neondb?sslmode=require")
+    assert pooled["connect_args"] == {"prepare_threshold": None}
+    direct = _engine_options("postgresql://u:p@ep-cool-1.us-east-2.aws.neon.tech/neondb?sslmode=require")
+    assert "connect_args" not in direct and direct["pool_pre_ping"]

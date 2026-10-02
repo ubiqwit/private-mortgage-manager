@@ -12,10 +12,11 @@ GitHub Pages only serves static pages, so it can't run this app — it keeps hos
 
 1. Go to <https://neon.tech> and sign up (GitHub sign-in is easiest).
 2. Create a project: name `mortgages`, region **AWS US East 2 (Ohio)** (same area as the app).
-3. On the project dashboard click **Connect**. Make sure **Connection pooling is off**, then copy the
-   connection string. It looks like
+3. On the project dashboard click **Connect** and copy the connection string. It looks like
    `postgresql://neondb_owner:…@ep-something.us-east-2.aws.neon.tech/neondb?sslmode=require`
+   Either the pooled string (host contains `-pooler`) or the direct one works — the app adjusts.
    Keep it handy for step 2 — it contains the database password, so don't share it.
+   (No Neon CLI, `neon.ts` or `neon deploy` is needed: the app only needs this connection string.)
 
 ## 2. Create the app (Render)
 

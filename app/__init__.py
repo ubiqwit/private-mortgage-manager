@@ -40,6 +40,16 @@ def _database_url(instance_path):
     return url
 
 
+def _engine_options(url: str) -> dict:
+    # Serverless databases (e.g. Neon) drop idle connections: test before use, recycle often.
+    options = {"pool_pre_ping": True, "pool_recycle": 280}
+    if "-pooler." in url:
+        # Neon's pooled endpoint (PgBouncer, transaction mode) can't keep server-side prepared
+        # statements across transactions, so turn off psycopg's automatic preparing.
+        options["connect_args"] = {"prepare_threshold": None}
+    return options
+
+
 def create_app(test_config=None):
     app = Flask(__name__, instance_relative_config=True)
     os.makedirs(app.instance_path, exist_ok=True)
@@ -50,7 +60,7 @@ def create_app(test_config=None):
         SECRET_KEY=os.environ.get("PMM_SECRET_KEY") or os.environ.get("SECRET_KEY"),
         SQLALCHEMY_DATABASE_URI=_database_url(app.instance_path),
         # Serverless databases (e.g. Neon) drop idle connections: test before use, recycle often.
-        SQLALCHEMY_ENGINE_OPTIONS={"pool_pre_ping": True, "pool_recycle": 280},
+        SQLALCHEMY_ENGINE_OPTIONS=_engine_options(os.environ.get("DATABASE_URL") or ""),
         MAX_CONTENT_LENGTH=20 * 1024 * 1024,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
