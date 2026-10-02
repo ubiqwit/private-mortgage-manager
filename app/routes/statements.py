@@ -11,6 +11,7 @@ from ..models import TXN_TYPES, BankTransaction, Mortgage, MortgageTransaction, 
 from ..services import matching
 from ..services import statements as st
 from ..services.market import latest_prime
+from ..services.periods import PeriodClosed, closed_through, ensure_open, is_closed
 
 bp = Blueprint("statements", __name__, url_prefix="/statements")
 
@@ -31,6 +32,13 @@ def index():
 
 def _import_lines(lines, filename, account, auto=True):
     account = (account or "").strip() or "Main account"
+    locked = [ln for ln in lines if is_closed(ln.date)]
+    if locked:
+        lines = [ln for ln in lines if not is_closed(ln.date)]
+        flash(f"Skipped {len(locked)} line(s) dated in months that are closed (through "
+              f"{closed_through():%B %Y}). Reopen the month first if they belong in the books.", "warning")
+        if not lines:
+            raise st.StatementError("Every line in this file is in a closed month — nothing was imported.")
     fps = st.fingerprints(lines, account)
     existing = {fp for (fp,) in db.session.query(BankTransaction.fingerprint).filter(BankTransaction.fingerprint.in_(fps))}
     imp = StatementImport(filename=filename[:255], account_name=account,
@@ -129,7 +137,12 @@ def map_columns(token):
     except st.StatementError as exc:
         error = str(exc)
     if request.method == "POST" and request.form.get("action") == "import" and not error:
-        imp = _import_lines(lines, pending.filename, account, auto=auto)
+        try:
+            imp = _import_lines(lines, pending.filename, account, auto=auto)
+        except st.StatementError as exc:
+            db.session.rollback()
+            flash(str(exc), "danger")
+            return redirect(url_for("statements.index"))
         db.session.delete(pending)
         db.session.commit()
         return redirect(url_for("statements.reconcile", statement=imp.id))
@@ -146,6 +159,11 @@ def map_columns(token):
 @bp.route("/<int:statement_id>/delete", methods=["POST"])
 def delete_statement(statement_id):
     imp = db.get_or_404(StatementImport, statement_id)
+    try:
+        ensure_open(*(bt.date for bt in imp.transactions), action="delete a statement with lines in a closed month")
+    except PeriodClosed as exc:
+        flash(str(exc), "danger")
+        return redirect(url_for("statements.index"))
     removed = 0
     for bt in imp.transactions:
         removed += len(bt.mortgage_transactions)
@@ -210,6 +228,11 @@ def allocate(line_id):
     txn_type = request.form.get("type", "payment")
     if txn_type not in dict(TXN_TYPES):
         abort(400)
+    try:
+        ensure_open(bt.date, action="match this line")
+    except PeriodClosed as exc:
+        flash(str(exc), "danger")
+        return _back()
     amount = request.form.get("amount")
     existing = None
     if request.form.get("existing_id"):
@@ -234,7 +257,7 @@ def allocate(line_id):
 
 @bp.route("/auto-match", methods=["POST"])
 def auto_match():
-    lines = BankTransaction.query.filter_by(status="unmatched").all()
+    lines = [bt for bt in BankTransaction.query.filter_by(status="unmatched") if not is_closed(bt.date)]
     n = matching.auto_match(lines, latest_prime())
     audit("auto_match", f"{n} lines")
     db.session.commit()
@@ -248,6 +271,11 @@ def ignore(line_id):
     if bt.mortgage_transactions:
         flash("Unmatch this line before ignoring it.", "warning")
         return _back()
+    try:
+        ensure_open(bt.date, action="change this line")
+    except PeriodClosed as exc:
+        flash(str(exc), "danger")
+        return _back()
     bt.status = "ignored"
     db.session.commit()
     return _back()
@@ -256,6 +284,11 @@ def ignore(line_id):
 @bp.route("/lines/<int:line_id>/restore", methods=["POST"])
 def restore(line_id):
     bt = db.get_or_404(BankTransaction, line_id)
+    try:
+        ensure_open(bt.date, *(t.date for t in bt.mortgage_transactions), action="unmatch this line")
+    except PeriodClosed as exc:
+        flash(str(exc), "danger")
+        return _back()
     if bt.mortgage_transactions:
         audit("bank_line_unmatched", f"{bt.date} {bt.amount} {bt.description[:80]}")
     matching.unmatch(bt)

@@ -47,6 +47,9 @@
   </div>
 
   <div class="form-section">Loan terms</div>
+  {% if m.id %}<div class="alert alert-light border small py-2"><i class="bi bi-info-circle"></i> Editing the rate or payment here
+    corrects the terms for the <em>whole life</em> of the loan (including months already reported). For a renewal or a rate
+    change from a date forward, use <strong>Renew / change terms</strong> on the mortgage page instead.</div>{% endif %}
   <div class="row g-3">
     {{ field('principal_amount', 'Principal advanced ($)', 'number', 'col-md-3', step='0.01', required=True) }}
     {{ select('rate_type', 'Rate type', [('fixed','Fixed'),('variable','Variable (prime + spread)')], col='col-md-3') }}

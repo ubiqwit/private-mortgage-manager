@@ -193,8 +193,9 @@
             <td class="num">{{ t.interest|money }}</td><td class="num">{{ t.principal|money }}</td><td class="num">{{ t.fees|money }}</td>
             <td class="small">{% if t.bank_transaction %}<i class="bi bi-bank" title="Matched to bank statement"></i> {{ t.bank_transaction.description }}{% endif %}
               {{ t.notes or '' }}</td>
-            <td class="text-end">{% if current_user.can_edit %}
-              <form method="post" action="{{ url_for('mortgages.delete_transaction', txn_id=t.id) }}" onsubmit="return confirm('Remove this transaction?')">
+            <td class="text-end text-nowrap">{% if current_user.can_edit %}
+              <a class="btn btn-link btn-sm p-0 me-2" href="{{ url_for('mortgages.edit_transaction', txn_id=t.id) }}" title="Edit"><i class="bi bi-pencil"></i></a>
+              <form method="post" action="{{ url_for('mortgages.delete_transaction', txn_id=t.id) }}" class="d-inline" onsubmit="return confirm('Remove this transaction?')">
                 {{ csrf_field() }}<button class="btn btn-link btn-sm text-danger p-0" title="Remove"><i class="bi bi-trash"></i></button></form>
             {% endif %}</td>
           </tr>

@@ -19,6 +19,7 @@ from ..models import (
 )
 from ..services import calc, ledger, matching
 from ..services.market import latest_prime
+from ..services.periods import PeriodClosed, ensure_open
 from ..timeutil import today as local_today
 
 bp = Blueprint("mortgages", __name__, url_prefix="/mortgages")
@@ -210,6 +211,11 @@ def delete(mortgage_id):
     if request.form.get("confirm") != m.reference:
         flash(f"Type {m.reference} to confirm deletion.", "warning")
         return redirect(url_for("mortgages.detail", mortgage_id=m.id))
+    try:
+        ensure_open(*(t.date for t in m.transactions), m.funded_date, action="delete a mortgage with history in closed months")
+    except PeriodClosed as exc:
+        flash(str(exc) + " Set its status to Paid out instead.", "danger")
+        return redirect(url_for("mortgages.detail", mortgage_id=m.id))
     for t in m.transactions:
         if t.bank_transaction is not None:
             t.bank_transaction.status = "unmatched" if len(t.bank_transaction.mortgage_transactions) <= 1 else "matched"
@@ -306,8 +312,10 @@ def transaction_from_form(m, form, txn=None):
 def add_transaction(mortgage_id):
     m = db.get_or_404(Mortgage, mortgage_id)
     try:
-        txn = transaction_from_form(m, request.form)
-    except FormError as exc:
+        with db.session.no_autoflush:
+            txn = transaction_from_form(m, request.form)
+            ensure_open(txn.date, action="record a transaction there")
+    except (FormError, PeriodClosed) as exc:
         db.session.rollback()
         flash(str(exc), "danger")
         return redirect(url_for("mortgages.detail", mortgage_id=m.id))
@@ -326,6 +334,11 @@ def delete_transaction(txn_id):
     txn = db.get_or_404(MortgageTransaction, txn_id)
     m = txn.mortgage
     bank = txn.bank_transaction
+    try:
+        ensure_open(txn.date, action="remove this transaction")
+    except PeriodClosed as exc:
+        flash(str(exc), "danger")
+        return redirect(url_for("mortgages.detail", mortgage_id=m.id))
     audit("transaction_deleted", f"{m.reference} {txn.type} {txn.amount} on {txn.date}")
     if bank is not None:
         bank.mortgage_transactions.remove(txn)
@@ -367,7 +380,8 @@ def renew(mortgage_id):
             raise FormError("The new maturity date must be after the effective date")
         fee = parse_decimal(f.get("renewal_fee"), "Renewal fee")
         payment_amount = parse_decimal(f.get("payment_amount"), "Payment amount")
-    except FormError as exc:
+        ensure_open(effective, action="change terms from that date")
+    except (FormError, PeriodClosed) as exc:
         flash(str(exc), "danger")
         return redirect(url_for("mortgages.detail", mortgage_id=m.id))
 
@@ -403,6 +417,11 @@ def undo_renewal(mortgage_id):
         flash("There is no renewal to undo.", "warning")
         return redirect(url_for("mortgages.detail", mortgage_id=m.id))
     last = m.term_history[-1]
+    try:
+        ensure_open(last.valid_until + timedelta(days=1), action="undo a renewal that took effect in a closed month")
+    except PeriodClosed as exc:
+        flash(str(exc), "danger")
+        return redirect(url_for("mortgages.detail", mortgage_id=m.id))
     last.restore_to(m)
     m.term_months = calc.months_between(
         m.term_history[-2].valid_until + timedelta(days=1) if len(m.term_history) > 1 else m.funded_date,
@@ -415,3 +434,34 @@ def undo_renewal(mortgage_id):
     flash("Last renewal undone — previous terms restored. (A renewal fee recorded with it was left in place; "
           "remove it from the transactions if needed.)", "info")
     return redirect(url_for("mortgages.detail", mortgage_id=m.id))
+
+
+@bp.route("/transactions/<int:txn_id>/edit", methods=["GET", "POST"])
+def edit_transaction(txn_id):
+    txn = db.get_or_404(MortgageTransaction, txn_id)
+    m = txn.mortgage
+    if request.method == "POST":
+        old_date, old_amount = txn.date, calc.money(txn.amount)
+        try:
+            with db.session.no_autoflush:
+                transaction_from_form(m, request.form, txn)
+                ensure_open(old_date, txn.date, action="change this transaction")
+                bank = txn.bank_transaction
+                if bank is not None:
+                    room = matching.remaining(bank) + old_amount
+                    if calc.money(txn.amount) > room:
+                        raise FormError(f"This payment came from a bank line with only {room:,.2f} available")
+        except (FormError, PeriodClosed) as exc:
+            db.session.rollback()
+            flash(str(exc), "danger")
+            return redirect(url_for("mortgages.edit_transaction", txn_id=txn_id))
+        if txn.bank_transaction is not None:
+            bank = txn.bank_transaction
+            bank.status = "matched" if matching.remaining(bank) <= 0 else "unmatched"
+        matching.reopen_if_needed(m)
+        audit("transaction_edited", f"{m.reference} {txn.type} {txn.amount} on {txn.date} "
+                                    f"(int {txn.interest}, prin {txn.principal}, fees {txn.fees})")
+        db.session.commit()
+        flash("Transaction updated.", "success")
+        return redirect(url_for("mortgages.detail", mortgage_id=m.id))
+    return render_template("mortgages/transaction_form.html", t=txn, m=m, txn_types=TXN_TYPES)

@@ -1,10 +1,14 @@
 """Month-end report: on screen, Excel workbook and CSV."""
 import re
+from datetime import timedelta
 
-from flask import Blueprint, Response, abort, g, render_template, request
+from flask import Blueprint, Response, abort, flash, g, redirect, render_template, request, url_for
 
-from ..services import reports
+from .. import db
+from ..models import audit
+from ..services import periods, reports
 from ..services.market import latest_prime
+from ..timeutil import today as local_today
 
 bp = Blueprint("reports", __name__, url_prefix="/reports")
 
@@ -26,7 +30,42 @@ def month_end():
     year, month = _selected_month()
     report = reports.month_end_report(year, month, latest_prime())
     return render_template("reports/month_end.html", r=report, months=reports.previous_months(),
-                           selected=f"{year:04d}-{month:02d}")
+                           selected=f"{year:04d}-{month:02d}", closed_through=periods.closed_through(),
+                           month_over=report["end"] < local_today())
+
+
+@bp.route("/close", methods=["POST"])
+def close_month():
+    if not g.user.is_admin:
+        abort(403)
+    year, month = _selected_month()
+    _, end = reports.month_range(year, month)
+    if end >= local_today():
+        flash("You can only close a month after it has ended.", "warning")
+    else:
+        periods.set_closed_through(end)
+        audit("books_closed", f"through {end}")
+        db.session.commit()
+        flash(f"Books closed through {end:%B %Y}. Transactions, matches and imports dated on or before "
+              f"{end:%b %d, %Y} are now locked.", "success")
+    return redirect(url_for("reports.month_end", month=f"{year:04d}-{month:02d}"))
+
+
+@bp.route("/reopen", methods=["POST"])
+def reopen_month():
+    if not g.user.is_admin:
+        abort(403)
+    year, month = _selected_month()
+    start, _ = reports.month_range(year, month)
+    current = periods.closed_through()
+    if current and current >= start:
+        new_end = start - timedelta(days=1)
+        periods.set_closed_through(new_end)
+        audit("books_reopened", f"from {start} (was closed through {current})")
+        db.session.commit()
+        flash(f"Reopened {start:%B %Y}" + (" and later months" if current.month != month or current.year != year else "")
+              + ". Remember to resend the report if anything changes.", "info")
+    return redirect(url_for("reports.month_end", month=f"{year:04d}-{month:02d}"))
 
 
 @bp.route("/month-end.xlsx")
