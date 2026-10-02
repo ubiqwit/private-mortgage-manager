@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in — Private Mortgage Manager</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap/bootstrap.min.css') }}">
+</head>
+<body class="bg-light d-flex align-items-center justify-content-center" style="min-height:100vh">
+  <form method="post" class="card p-4 shadow-sm" style="width:320px">
+    <h1 class="h5 mb-3">Private Mortgage Manager</h1>
+    {% for category, message in get_flashed_messages(with_categories=true) %}
+      <div class="alert alert-{{ category }} py-2">{{ message }}</div>
+    {% endfor %}
+    <input type="password" name="password" class="form-control mb-3" placeholder="Password" autofocus required>
+    <button class="btn btn-primary w-100">Sign in</button>
+  </form>
+</body>
+</html>

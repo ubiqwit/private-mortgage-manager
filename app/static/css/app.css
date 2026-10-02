@@ -1,0 +1,23 @@
+:root { --sidebar-w: 230px; }
+body { background: #f4f6f9; }
+.app-shell { min-height: 100vh; }
+.sidebar { width: var(--sidebar-w); background: #14213d; position: sticky; top: 0; height: 100vh; }
+.sidebar .brand { color: #fff; font-weight: 600; font-size: 1.1rem; text-decoration: none; }
+.sidebar .nav-link { color: #c9d1e4; }
+.sidebar .nav-link:hover { color: #fff; background: rgba(255,255,255,.06); }
+.sidebar .nav-link.active { background: #fca311; color: #14213d; font-weight: 600; }
+.card { border: 0; box-shadow: 0 1px 2px rgba(20,33,61,.08); }
+.stat-card .stat-label { font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: #6c757d; }
+.stat-card .stat-value { font-size: 1.55rem; font-weight: 600; color: #14213d; }
+.stat-card .stat-sub { font-size: .82rem; color: #6c757d; }
+.table-sm td, .table-sm th { vertical-align: middle; }
+.table thead th { font-size: .78rem; text-transform: uppercase; letter-spacing: .03em; color: #6c757d; white-space: nowrap; }
+.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.badge-status-active { background: #198754; }
+.badge-status-in_arrears { background: #fd7e14; }
+.badge-status-default { background: #dc3545; }
+.badge-status-matured { background: #6f42c1; }
+.badge-status-paid_out { background: #6c757d; }
+.chart-box { position: relative; height: 260px; }
+.form-section { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: #6c757d; border-bottom: 1px solid #dee2e6; padding-bottom: .25rem; margin: 1.25rem 0 .75rem; }
+.desc-cell { max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
