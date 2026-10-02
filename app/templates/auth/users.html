@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="h3 mb-3">Users</h1>
+<div class="row g-4">
+  <div class="col-lg-8">
+    <div class="card">
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Email</th><th>Name</th><th>Role</th><th>Active</th><th>Last sign-in</th><th>Reset password</th><th></th></tr></thead>
+        <tbody>
+        {% for u in users %}
+          <tr>
+            <td>{{ u.email }}</td>
+            <td>{{ u.name or '' }}</td>
+            <td><select name="role" form="uf{{ u.id }}" class="form-select form-select-sm">
+              {% for r, label in roles %}<option value="{{ r }}" {% if u.role == r %}selected{% endif %}>{{ r }}</option>{% endfor %}
+            </select></td>
+            <td><input type="checkbox" class="form-check-input" name="active" value="1" form="uf{{ u.id }}" {% if u.active %}checked{% endif %}></td>
+            <td class="small">{{ u.last_login_at.strftime('%Y-%m-%d %H:%M') if u.last_login_at else 'never' }}</td>
+            <td><input type="password" name="password" form="uf{{ u.id }}" class="form-control form-control-sm" placeholder="leave blank" autocomplete="new-password"></td>
+            <td><form id="uf{{ u.id }}" method="post" action="{{ url_for('auth.update_user', user_id=u.id) }}">{{ csrf_field() }}
+              <button class="btn btn-sm btn-outline-primary">Save</button></form></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <form method="post" action="{{ url_for('auth.create_user') }}" class="card p-3">{{ csrf_field() }}
+      <h2 class="h6">Add a user</h2>
+      <input name="email" type="email" class="form-control form-control-sm mb-2" placeholder="Email" required>
+      <input name="name" class="form-control form-control-sm mb-2" placeholder="Name (optional)">
+      <select name="role" class="form-select form-select-sm mb-2">
+        {% for r, label in roles %}<option value="{{ r }}" {% if r == 'viewer' %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+      <input name="password" type="password" class="form-control form-control-sm mb-2" placeholder="Initial password (min 10)" minlength="10" autocomplete="new-password" required>
+      <button class="btn btn-sm btn-primary">Create user</button>
+    </form>
+  </div>
+</div>
+<h2 class="h5 mt-4">Recent activity</h2>
+<div class="card"><table class="table table-sm mb-0">
+  <thead><tr><th>When (UTC)</th><th>User</th><th>Action</th><th>Detail</th><th>IP</th></tr></thead>
+  <tbody>{% for a in recent %}
+    <tr><td class="small">{{ a.at.strftime('%Y-%m-%d %H:%M') }}</td><td>{{ a.user.email if a.user else '—' }}</td>
+        <td>{{ a.action }}</td><td class="small">{{ a.detail }}</td><td class="small">{{ a.ip or '' }}</td></tr>
+  {% endfor %}</tbody>
+</table></div>
+{% endblock %}

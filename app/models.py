@@ -346,3 +346,102 @@ def next_reference():
     while db.session.query(Mortgage.id).filter_by(reference=f"M-{n:03d}").first():
         n += 1
     return f"M-{n:03d}"
+
+
+# ----------------------------------------------------------------------------
+# Users & audit trail (the app is designed to be hosted and reached from anywhere)
+# ----------------------------------------------------------------------------
+ROLES = [
+    ("admin", "Admin — full access, manages users"),
+    ("editor", "Editor — can add and change data"),
+    ("viewer", "Viewer — read-only (e.g. your accountant)"),
+]
+
+
+class User(TimestampMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(200), unique=True, nullable=False)
+    name = db.Column(db.String(200))
+    password_hash = db.Column(db.String(300), nullable=False)
+    password_stamp = db.Column(db.String(32), nullable=False, default="")
+    role = db.Column(db.String(20), nullable=False, default="admin")
+    active = db.Column(db.Boolean, nullable=False, default=True)
+    last_login_at = db.Column(db.DateTime)
+
+    def set_password(self, password: str):
+        import secrets
+
+        from werkzeug.security import generate_password_hash
+
+        if len(password or "") < 10:
+            raise ValueError("Password must be at least 10 characters.")
+        self.password_hash = generate_password_hash(password)
+        self.password_stamp = secrets.token_hex(8)
+
+    def check_password(self, password: str) -> bool:
+        from werkzeug.security import check_password_hash
+
+        return check_password_hash(self.password_hash, password or "")
+
+    @property
+    def is_admin(self):
+        return self.role == "admin"
+
+    @property
+    def can_edit(self):
+        return self.role in ("admin", "editor")
+
+    @property
+    def display_name(self):
+        return self.name or self.email
+
+
+class AuditLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
+    action = db.Column(db.String(80), nullable=False)
+    detail = db.Column(db.String(1000))
+    ip = db.Column(db.String(64))
+
+    user = db.relationship("User")
+
+
+def audit(action: str, detail: str = ""):
+    """Record who did what. Call before ``db.session.commit()``."""
+    from flask import g, has_request_context, request
+
+    user = g.get("user") if has_request_context() else None
+    ip = request.remote_addr if has_request_context() else None
+    db.session.add(AuditLog(user_id=user.id if user else None, action=action, detail=detail[:1000], ip=ip))
+
+
+class PendingUpload(db.Model):
+    """Raw uploaded statement kept in the database between the upload and the
+    column-mapping confirmation step (cloud hosts have ephemeral disks)."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    token = db.Column(db.String(64), unique=True, nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
+    filename = db.Column(db.String(255), nullable=False)
+    content = db.Column(db.LargeBinary, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+def bootstrap_admin_from_env():
+    """Create the first admin from PMM_ADMIN_EMAIL / PMM_ADMIN_PASSWORD if no users exist.
+
+    Handy on hosting platforms where you cannot run a shell command before first use.
+    """
+    import os
+
+    email = os.environ.get("PMM_ADMIN_EMAIL")
+    password = os.environ.get("PMM_ADMIN_PASSWORD")
+    if not email or not password:
+        return
+    if db.session.query(User.id).first():
+        return
+    user = User(email=email.strip().lower(), name="Owner", role="admin")
+    user.set_password(password)
+    db.session.add(user)
+    db.session.commit()

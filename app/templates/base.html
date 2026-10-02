@@ -26,8 +26,15 @@
         </li>
       {% endfor %}
     </ul>
-    {% if config.APP_PASSWORD %}
-    <a class="mt-auto small text-secondary" href="{{ url_for('auth.logout') }}"><i class="bi bi-box-arrow-right"></i> Log out</a>
+    {% if current_user %}
+    <div class="mt-auto small user-box">
+      <div class="text-white-50 mb-1"><i class="bi bi-person-circle"></i> {{ current_user.display_name }}
+        <span class="badge text-bg-secondary">{{ current_user.role }}</span></div>
+      <a href="{{ url_for('auth.change_password') }}">Change password</a>
+      {% if current_user.is_admin %} · <a href="{{ url_for('auth.users') }}">Users</a>{% endif %}
+      <form method="post" action="{{ url_for('auth.logout') }}" class="d-inline">{{ csrf_field() }}
+        · <button class="btn btn-link btn-sm p-0 align-baseline">Sign out</button></form>
+    </div>
     {% endif %}
   </nav>
   <main class="flex-grow-1">
@@ -37,6 +44,7 @@
         {% for endpoint, icon, text in nav if endpoint.split('.')[0] in blueprints_loaded %}
           <a class="text-white" href="{{ url_for(endpoint) }}" title="{{ text }}"><i class="bi bi-{{ icon }}"></i></a>
         {% endfor %}
+        <a class="text-white" href="{{ url_for('auth.change_password') }}" title="Account"><i class="bi bi-person-circle"></i></a>
       </div>
     </nav>
     <div class="container-fluid p-4">

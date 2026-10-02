@@ -6,12 +6,19 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap/bootstrap.min.css') }}">
 </head>
 <body class="bg-light d-flex align-items-center justify-content-center" style="min-height:100vh">
-  <form method="post" class="card p-4 shadow-sm" style="width:320px">
+  <form method="post" class="card p-4 shadow-sm" style="width:340px">
+    {{ csrf_field() }}
     <h1 class="h5 mb-3">Private Mortgage Manager</h1>
     {% for category, message in get_flashed_messages(with_categories=true) %}
       <div class="alert alert-{{ category }} py-2">{{ message }}</div>
     {% endfor %}
-    <input type="password" name="password" class="form-control mb-3" placeholder="Password" autofocus required>
+    {% if no_users %}
+      <div class="alert alert-warning small">No accounts exist yet. Create the first admin with
+        <code>flask --app run create-user you@example.com</code> or set
+        <code>PMM_ADMIN_EMAIL</code> / <code>PMM_ADMIN_PASSWORD</code> and restart.</div>
+    {% endif %}
+    <input type="email" name="email" class="form-control mb-2" placeholder="Email" autocomplete="username" autofocus required>
+    <input type="password" name="password" class="form-control mb-3" placeholder="Password" autocomplete="current-password" required>
     <button class="btn btn-primary w-100">Sign in</button>
   </form>
 </body>

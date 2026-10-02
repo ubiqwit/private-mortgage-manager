@@ -21,3 +21,5 @@ body { background: #f4f6f9; }
 .chart-box { position: relative; height: 260px; }
 .form-section { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: #6c757d; border-bottom: 1px solid #dee2e6; padding-bottom: .25rem; margin: 1.25rem 0 .75rem; }
 .desc-cell { max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-box a, .user-box .btn-link { color: #c9d1e4; text-decoration: none; font-size: .8rem; }
+.user-box a:hover, .user-box .btn-link:hover { color: #fff; }
