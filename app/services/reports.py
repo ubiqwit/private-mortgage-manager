@@ -4,12 +4,14 @@ from __future__ import annotations
 import calendar
 import csv
 import io
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 from dateutil.relativedelta import relativedelta
 
 from ..models import BankTransaction, Mortgage, MortgageTransaction
+from ..timeutil import now as local_now
+from ..timeutil import today as local_today
 from . import calc
 
 ZERO = Decimal("0.00")
@@ -22,7 +24,7 @@ def month_range(year: int, month: int):
 
 def default_month(today: date | None = None):
     """The month just ended — what you'd hand the accountant."""
-    today = today or date.today()
+    today = today or local_today()
     prev = today.replace(day=1) - timedelta(days=1)
     return prev.year, prev.month
 
@@ -91,7 +93,7 @@ def month_end_report(year: int, month: int, prime=None) -> dict:
             your_income=calc.money((inc["interest"] + inc["fees"]) * share),
             accrued=accrued, expected=calc.money(expected), regular=calc.money(regular),
             variance=calc.money(regular - expected), payments_due=len(due),
-            arrears=m.arrears(end, prime), status=m.display_status_label if end >= date.today() else _status_at(m, end),
+            arrears=m.arrears(end, prime), status=m.display_status_label if end >= local_today() else _status_at(m, end),
         ))
 
     def total(key):
@@ -119,7 +121,7 @@ def month_end_report(year: int, month: int, prime=None) -> dict:
         year=year, month=month, start=start, end=end, label=start.strftime("%B %Y"),
         rows=rows, totals=totals, transactions=transactions, bank=bank, manual=manual,
         ytd=ytd_by_month(year, month), has_syndicated=any(r["share_pct"] != 100 for r in rows),
-        generated=datetime.now(),
+        generated=local_now(),
     )
 
 
@@ -311,6 +313,6 @@ def month_end_workbook(report: dict, prepared_by: str = "") -> bytes:
 
 
 def previous_months(n=18, today: date | None = None):
-    today = today or date.today()
+    today = today or local_today()
     first = today.replace(day=1)
     return [(first - relativedelta(months=i)) for i in range(n)]

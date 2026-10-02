@@ -18,6 +18,7 @@ from ..models import (
 )
 from ..services import calc, ledger, matching
 from ..services.market import latest_prime
+from ..timeutil import today as local_today
 
 bp = Blueprint("mortgages", __name__, url_prefix="/mortgages")
 
@@ -53,7 +54,7 @@ def parse_decimal(raw, label):
     try:
         return Decimal(raw)
     except InvalidOperation:
-        raise FormError(f"{label}: '{raw}' is not a number")
+        raise FormError(f"{label}: '{raw}' is not a number") from None
 
 
 def parse_date(raw, label):
@@ -63,7 +64,7 @@ def parse_date(raw, label):
     try:
         return datetime.strptime(raw, "%Y-%m-%d").date()
     except ValueError:
-        raise FormError(f"{label}: '{raw}' is not a valid date (YYYY-MM-DD)")
+        raise FormError(f"{label}: '{raw}' is not a valid date (YYYY-MM-DD)") from None
 
 
 def apply_form(m: Mortgage, form):
@@ -222,7 +223,7 @@ def delete(mortgage_id):
 def detail(mortgage_id):
     m = db.get_or_404(Mortgage, mortgage_id)
     prime = latest_prime()
-    year_start = date(date.today().year, 1, 1)
+    year_start = date(local_today().year, 1, 1)
     stats = dict(
         balance=m.balance(),
         rate=m.effective_rate(prime),
@@ -233,8 +234,8 @@ def detail(mortgage_id):
         next_due=m.next_due_date(),
         last_payment=m.last_payment(),
         days_to_maturity=m.days_to_maturity(),
-        ytd=m.income_between(year_start, date.today()),
-        lifetime=m.income_between(m.funded_date, date.today()),
+        ytd=m.income_between(year_start, local_today()),
+        lifetime=m.income_between(m.funded_date, local_today()),
         annual_interest=calc.money(m.balance() * m.effective_rate(prime) / 100),
     )
     return render_template("mortgages/detail.html", m=m, s=stats, prime=prime, txn_types=TXN_TYPES,
@@ -260,7 +261,7 @@ def split(mortgage_id):
     m = db.get_or_404(Mortgage, mortgage_id)
     try:
         amount = parse_decimal(request.args.get("amount"), "Amount") or Decimal(0)
-        on = parse_date(request.args.get("date"), "Date") or date.today()
+        on = parse_date(request.args.get("date"), "Date") or local_today()
     except FormError as exc:
         return jsonify(error=str(exc)), 400
     s = ledger.suggest_split(m, amount, on, request.args.get("type", "payment"), latest_prime())
@@ -273,7 +274,7 @@ def transaction_from_form(m, form, txn=None):
     txn.type = form.get("type", "payment")
     if txn.type not in dict(TXN_TYPES):
         raise FormError("Unknown transaction type")
-    txn.date = parse_date(form.get("date"), "Date") or date.today()
+    txn.date = parse_date(form.get("date"), "Date") or local_today()
     amount = parse_decimal(form.get("amount"), "Amount")
     if amount is None or amount <= 0:
         raise FormError("Amount must be greater than zero")

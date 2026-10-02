@@ -6,10 +6,13 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from flask import Flask, abort, g, redirect, request, session, url_for
-from markupsafe import Markup
 from flask_sqlalchemy import SQLAlchemy
+from markupsafe import Markup
 from sqlalchemy import exc as sa_exc
 from werkzeug.middleware.proxy_fix import ProxyFix
+
+from .timeutil import today as local_today
+from .timeutil import utc_to_local
 
 # SQLite has no native DECIMAL; SQLAlchemy round-trips Numeric(…, 2) safely but warns.
 warnings.filterwarnings("ignore", category=sa_exc.SAWarning, message=".*Decimal objects natively.*")
@@ -127,10 +130,16 @@ def _register_filters(app):
             return value.strftime("%b %d, %Y")
         return str(value)
 
+    @app.template_filter("local")
+    def local_time(value, fmt="%Y-%m-%d %H:%M"):
+        """Show a stored UTC timestamp in the owner's time zone."""
+        value = utc_to_local(value)
+        return value.strftime(fmt) if value else "—"
+
     @app.context_processor
     def inject_globals():
         return {
-            "today": date.today(),
+            "today": local_today(),
             "blueprints_loaded": set(app.blueprints),
             "current_user": g.get("user"),
             "csrf_token": csrf_token,

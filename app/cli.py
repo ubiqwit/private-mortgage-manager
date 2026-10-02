@@ -5,6 +5,7 @@ import click
 
 from . import db
 from .models import ROLES, User
+from .timeutil import today as local_today
 
 
 def register_cli(app):
@@ -26,7 +27,7 @@ def register_cli(app):
         try:
             user.set_password(password)
         except ValueError as exc:
-            raise click.ClickException(str(exc))
+            raise click.ClickException(str(exc)) from exc
         db.session.add(user)
         db.session.commit()
         click.echo(f"Created {role} user {email}")
@@ -42,7 +43,7 @@ def register_cli(app):
         try:
             user.set_password(password)
         except ValueError as exc:
-            raise click.ClickException(str(exc))
+            raise click.ClickException(str(exc)) from exc
         user.active = True
         db.session.commit()
         click.echo("Password updated")
@@ -51,7 +52,6 @@ def register_cli(app):
 def _seed_demo(today=None):
     """Populate a realistic sample book (for trying the app out)."""
     import random
-    from datetime import date
     from decimal import Decimal
 
     from dateutil.relativedelta import relativedelta
@@ -59,7 +59,7 @@ def _seed_demo(today=None):
     from .models import Mortgage, MortgageTransaction
     from .services import ledger
 
-    today = today or date.today()
+    today = today or local_today()
     rnd = random.Random(42)
     samples = [
         ("Jane & Mark Smith", "12 Maple Ave", "Toronto", "detached", 1_150_000, 2, 610_000, 250_000, "10.99", 12, 9, "interest_only"),

@@ -1,12 +1,11 @@
 import io
-from datetime import date
 from decimal import Decimal
 
 from app import db
 from app.models import BankTransaction, Mortgage, MortgageTransaction, PendingUpload, StatementImport
 from app.services import matching
 
-from .test_mortgages import BASE, create
+from .test_mortgages import create
 
 CSV = (
     "Date,Description,Amount\n"

@@ -8,6 +8,7 @@ from decimal import Decimal
 from dateutil.relativedelta import relativedelta
 
 from ..models import OPEN_STATUSES, PROPERTY_TYPES, Mortgage, MortgageTransaction
+from ..timeutil import today as local_today
 from . import calc
 
 ZERO = Decimal("0.00")
@@ -27,7 +28,7 @@ def _weighted(pairs):
 
 
 def dashboard_stats(today: date | None = None, prime=None) -> dict:
-    today = today or date.today()
+    today = today or local_today()
     all_mortgages = Mortgage.query.all()
     book = [m for m in all_mortgages if m.status in OPEN_STATUSES]
 

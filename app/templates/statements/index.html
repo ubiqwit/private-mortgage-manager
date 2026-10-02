@@ -42,7 +42,7 @@
             <td class="small text-nowrap">{{ imp.period_start.strftime('%b %d') if imp.period_start }} – {{ imp.period_end|d }}</td>
             <td class="num">{{ imp.row_count }}{% if imp.duplicate_count %} <span class="text-secondary small" title="Already imported, skipped">(+{{ imp.duplicate_count }} dup)</span>{% endif %}</td>
             <td class="num">{{ matched_counts.get(imp.id, 0) }}</td>
-            <td class="small text-nowrap">{{ imp.imported_at.strftime('%Y-%m-%d') }}</td>
+            <td class="small text-nowrap">{{ imp.imported_at|local('%Y-%m-%d') }}</td>
             <td class="text-end">{% if current_user.can_edit %}
               <form method="post" action="{{ url_for('statements.delete_statement', statement_id=imp.id) }}"
                     onsubmit="return confirm('Delete this import? Any mortgage payments recorded from its lines will also be removed.')">

@@ -207,7 +207,7 @@ def parse_ofx(content: bytes) -> tuple[list[ParsedLine], str | None]:
     acct = re.search(r"<ACCTID>([^<\r\n]+)", text, re.I)
     lines = []
     for block in re.findall(r"<STMTTRN>(.*?)(?:</STMTTRN>|(?=<STMTTRN>)|(?=</BANKTRANLIST>))", text, re.S | re.I):
-        def tag(name):
+        def tag(name, block=block):
             m = re.search(rf"<{name}>([^<\r\n]*)", block, re.I)
             return m.group(1).strip() if m else ""
 
@@ -326,7 +326,7 @@ def apply_mapping(rows: list[list[str]], m: Mapping) -> tuple[list[ParsedLine], 
     data = rows[m.header_row + 1:] if m.has_header else rows
     lines, warnings = [], []
     for n, row in enumerate(data, start=(m.header_row + 2 if m.has_header else 1)):
-        def cell(i):
+        def cell(i, row=row):
             return row[i] if i is not None and i < len(row) else ""
 
         d = parse_date(cell(m.date), m.date_format)

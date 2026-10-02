@@ -19,7 +19,9 @@ Data is stored in `instance/mortgages.db` (SQLite). Back this file up regularly.
 ## Running tests
 
 ```bash
+pip install -r requirements-dev.txt
 pytest
+ruff check app tests
 ```
 
 ## Running in the cloud (access from anywhere)

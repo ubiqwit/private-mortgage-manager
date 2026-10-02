@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template
 
-from ..services.market import latest, latest_prime, PRIME_SERIES
+from ..services.market import PRIME_SERIES, latest, latest_prime
 from ..services.portfolio import dashboard_stats
 
 bp = Blueprint("dashboard", __name__)

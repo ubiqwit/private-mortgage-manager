@@ -1,6 +1,6 @@
 """Bank statement upload, column mapping and reconciliation against mortgages."""
 import secrets
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 from flask import Blueprint, abort, flash, g, redirect, render_template, request, url_for
@@ -37,7 +37,7 @@ def _import_lines(lines, filename, account, auto=True):
                           period_start=min(ln.date for ln in lines), period_end=max(ln.date for ln in lines))
     db.session.add(imp)
     new = []
-    for ln, fp in zip(lines, fps):
+    for ln, fp in zip(lines, fps, strict=False):
         if fp in existing:
             continue
         existing.add(fp)

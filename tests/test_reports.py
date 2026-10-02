@@ -20,7 +20,7 @@ def setup_book(client):
 
 
 def test_january_includes_funding_and_partial_accrual(client):
-    m = setup_book(client)
+    setup_book(client)
     r = reports.month_end_report(2026, 1)
     row = r["rows"][0]
     assert row["opening"] == 0 and row["advances"] == Decimal("200000.00") and row["closing"] == Decimal("200000.00")

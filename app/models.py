@@ -18,6 +18,7 @@ from sqlalchemy import func
 
 from . import db
 from .services import calc
+from .timeutil import today as local_today
 
 ZERO = Decimal("0.00")
 
@@ -137,7 +138,7 @@ class Mortgage(TimestampMixin, db.Model):
     @property
     def display_status(self):
         """Stored status, upgraded to "matured" when an active loan is past its maturity date."""
-        if self.status in ("active", "in_arrears") and self.maturity_date < date.today():
+        if self.status in ("active", "in_arrears") and self.maturity_date < local_today():
             return "matured"
         return self.status
 
@@ -239,7 +240,7 @@ class Mortgage(TimestampMixin, db.Model):
         return list(calc.due_dates(self.first_payment_date, self.payment_frequency, start=start, end=end))
 
     def next_due_date(self, after: date | None = None):
-        after = after or date.today()
+        after = after or local_today()
         for d in calc.due_dates(self.first_payment_date, self.payment_frequency, start=after, end=self.maturity_date):
             return d
         return None
@@ -257,14 +258,14 @@ class Mortgage(TimestampMixin, db.Model):
 
     def arrears(self, as_of: date | None = None, prime=None, grace_days: int = ARREARS_GRACE_DAYS) -> Decimal:
         """Scheduled payments more than ``grace_days`` past due, minus regular payments received."""
-        as_of = as_of or date.today()
+        as_of = as_of or local_today()
         if self.status == "paid_out":
             return ZERO
         expected = self.scheduled_total(end=as_of - timedelta(days=grace_days), prime=prime)
         return max(calc.money(expected - self.regular_received(as_of)), ZERO)
 
     def days_to_maturity(self, as_of: date | None = None) -> int:
-        return (self.maturity_date - (as_of or date.today())).days
+        return (self.maturity_date - (as_of or local_today())).days
 
     def income_between(self, start: date, end: date):
         """Cash received split into interest/principal/fees for a date range."""
