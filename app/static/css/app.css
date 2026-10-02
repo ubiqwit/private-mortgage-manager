@@ -1,7 +1,9 @@
 :root { --sidebar-w: 230px; }
 body { background: #f4f6f9; }
 .app-shell { min-height: 100vh; }
-.sidebar { width: var(--sidebar-w); background: #14213d; position: sticky; top: 0; height: 100vh; }
+.sidebar { width: var(--sidebar-w); flex: 0 0 var(--sidebar-w); background: #14213d; }
+.sidebar-inner { position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+main { min-width: 0; }
 .sidebar .brand { color: #fff; font-weight: 600; font-size: 1.1rem; text-decoration: none; }
 .sidebar .nav-link { color: #c9d1e4; }
 .sidebar .nav-link:hover { color: #fff; background: rgba(255,255,255,.06); }
@@ -23,3 +25,18 @@ body { background: #f4f6f9; }
 .desc-cell { max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .user-box a, .user-box .btn-link { color: #c9d1e4; text-decoration: none; font-size: .8rem; }
 .user-box a:hover, .user-box .btn-link:hover { color: #fff; }
+.hero .hero-value { font-size: clamp(2rem, 9vw, 3rem); white-space: nowrap; font-weight: 600; color: #14213d; line-height: 1.1; margin-top: .25rem; }
+.status-good { color: #0ca30c; }
+.status-warning { color: #fab219; }
+.status-serious { color: #ec835a; }
+.status-critical { color: #d03b3b; }
+.meter { height: 6px; border-radius: 3px; background: #cde2fb; overflow: hidden; }
+.meter-fill { height: 100%; background: #2a78d6; border-radius: 3px; }
+.conc-row { margin-bottom: .45rem; }
+.conc-track { height: 6px; border-radius: 3px; background: #f0efec; overflow: hidden; }
+.conc-fill { height: 100%; background: #2a78d6; border-radius: 3px; }
+.stat-card .stat-value, .hero-value { font-variant-numeric: normal; }
+@media (max-width: 575.98px) {
+  .stat-card .stat-value { font-size: 1.2rem; }
+  .container-fluid.p-4 { padding: 1rem !important; }
+}

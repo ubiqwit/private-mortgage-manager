@@ -45,18 +45,19 @@
     {% for r in rows %}
       {% set m = r.m %}
       <tr onclick="location.href='{{ url_for('mortgages.detail', mortgage_id=m.id) }}'" style="cursor:pointer">
-        <td><a href="{{ url_for('mortgages.detail', mortgage_id=m.id) }}">{{ m.reference }}</a></td>
+        <td class="text-nowrap"><a href="{{ url_for('mortgages.detail', mortgage_id=m.id) }}">{{ m.reference }}</a></td>
         <td>{{ m.borrower_name }}</td>
         <td class="small">{{ m.property_address }}{% if m.property_city %}, {{ m.property_city }}{% endif %}</td>
         <td>{{ m.position_label }}</td>
         <td class="num">{{ r.balance|money }}</td>
         <td class="num">{{ r.rate|pct }}{% if m.rate_type == 'variable' %} <span class="badge text-bg-info" title="Prime + {{ m.prime_spread }}">V</span>{% endif %}</td>
         <td class="num">{{ r.payment|money }} <span class="text-secondary small">{{ m.payment_frequency.replace('_',' ') }}</span></td>
-        <td class="num {% if r.ltv and r.ltv > 80 %}text-danger fw-semibold{% elif r.ltv and r.ltv > 75 %}text-warning{% endif %}">{{ r.ltv|pct(1) }}</td>
-        <td>{{ r.next_due|d }}</td>
-        <td class="{% if m.days_to_maturity() < 0 %}text-danger{% elif m.days_to_maturity() < 90 %}text-warning fw-semibold{% endif %}">{{ m.maturity_date|d }}</td>
+        <td class="num">{% if r.ltv and r.ltv > 80 %}<i class="bi bi-exclamation-octagon-fill status-critical" title="High combined LTV"></i> {% elif r.ltv and r.ltv > 75 %}<i class="bi bi-exclamation-triangle-fill status-warning" title="Elevated combined LTV"></i> {% endif %}{{ r.ltv|pct(1) }}</td>
+        <td class="text-nowrap">{{ r.next_due|d }}</td>
+        {% set dtm = m.days_to_maturity() %}
+        <td class="text-nowrap">{% if dtm < 0 %}<i class="bi bi-exclamation-octagon-fill status-critical" title="Past maturity"></i> {% elif dtm < 90 %}<i class="bi bi-exclamation-triangle-fill status-warning" title="Matures within 90 days"></i> {% endif %}{{ m.maturity_date|d }}</td>
         <td class="num {% if r.arrears > 0 %}text-danger fw-semibold{% endif %}">{{ r.arrears|money if r.arrears > 0 else '—' }}</td>
-        <td><span class="badge badge-status-{{ m.status }}">{{ m.status_label }}</span></td>
+        <td><span class="badge badge-status-{{ m.display_status }}">{{ m.display_status_label }}</span></td>
       </tr>
     {% else %}
       <tr><td colspan="12" class="text-center text-secondary py-5">

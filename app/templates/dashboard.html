@@ -1,5 +1,195 @@
 {% extends "base.html" %}
+{% block title %}Dashboard — Private Mortgage Manager{% endblock %}
+{% macro tile(label, value, sub=None, cls='') %}
+  <div class="card stat-card h-100 p-3">
+    <div class="stat-label">{{ label }}</div>
+    <div class="stat-value {{ cls }}">{{ value }}</div>
+    {% if sub %}<div class="stat-sub">{{ sub }}</div>{% endif %}
+  </div>
+{% endmacro %}
+{% macro table_view(id, headers, rows) %}
+  <details class="mt-2 small"><summary class="text-secondary">View as table</summary>
+    <table class="table table-sm mt-2 mb-0" id="{{ id }}">
+      <thead><tr>{% for h in headers %}<th class="{{ 'num' if not loop.first }}">{{ h }}</th>{% endfor %}</tr></thead>
+      <tbody>{% for r in rows %}<tr>{% for c in r %}<td class="{{ 'num' if not loop.first }}">{{ c }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+    </table>
+  </details>
+{% endmacro %}
 {% block content %}
-<h1 class="h3">Dashboard</h1>
-<p class="text-secondary">Add your first mortgage to get started.</p>
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
+  <div>
+    <h1 class="h3 mb-0">Dashboard</h1>
+    <div class="text-secondary small">{{ today|d }}</div>
+  </div>
+  {% if prime_obs %}
+  <a href="{{ url_for('market.index') if 'market' in blueprints_loaded else '#' }}" class="text-decoration-none small text-secondary">
+    <i class="bi bi-graph-up-arrow"></i> Prime rate {{ prime_obs.value|pct }} <span class="text-muted">(as of {{ prime_obs.date|d }})</span></a>
+  {% endif %}
+</div>
+
+{% if not s.count %}
+  <div class="card p-5 text-center">
+    <h2 class="h5">Welcome! Your mortgage book is empty.</h2>
+    <p class="text-secondary">Add a mortgage to start tracking balances, payments and income.</p>
+    {% if current_user.can_edit %}<div><a class="btn btn-primary" href="{{ url_for('mortgages.new') }}">Add your first mortgage</a></div>{% endif %}
+  </div>
+{% else %}
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-4">
+    <div class="card h-100 p-4 hero">
+      <div class="stat-label">Capital deployed</div>
+      <div class="hero-value">{{ s.total_balance|money(false) }}</div>
+      <div class="stat-sub mt-1">{{ s.count }} open mortgage{{ '' if s.count == 1 else 's' }} · average {{ s.avg_loan|money(false) }}
+        {% if s.largest %}<br>Largest exposure: {{ s.largest.m.reference }} ({{ s.largest_pct|pct(1) }} of book){% endif %}</div>
+    </div>
+  </div>
+  <div class="col-lg-8">
+    <div class="row g-3">
+      <div class="col-6 col-md-4">{{ tile('Interest run-rate', s.monthly_interest|money(false) ~ '/mo', (s.annual_interest|money(false)) ~ ' per year at current balances') }}</div>
+      <div class="col-6 col-md-4">{{ tile('Weighted avg. rate', s.wavg_rate|pct, 'weighted by balance') }}</div>
+      <div class="col-6 col-md-4">{{ tile('Weighted avg. CLTV', s.wavg_cltv|pct(1) if s.wavg_cltv is not none else '—', 'incl. prior charges') }}</div>
+      <div class="col-6 col-md-4">
+        <div class="card stat-card h-100 p-3">
+          <div class="stat-label">Collected — {{ s.month_label }}</div>
+          <div class="stat-value">{{ s.collected_month|money(false) }}</div>
+          <div class="stat-sub">of {{ s.expected_month|money(false) }} scheduled</div>
+          {% set pctv = [s.collection_pct or 0, 100]|min %}
+          <div class="meter mt-2" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ pctv }}" aria-label="Collected this month">
+            <div class="meter-fill" style="width: {{ pctv }}%"></div></div>
+        </div>
+      </div>
+      <div class="col-6 col-md-4">{{ tile('Income year to date', (s.ytd.interest + s.ytd.fees)|money(false), 'Interest ' ~ (s.ytd.interest|money(false)) ~ ' · fees ' ~ (s.ytd.fees|money(false))) }}</div>
+      <div class="col-6 col-md-4">
+        <div class="card stat-card h-100 p-3">
+          <div class="stat-label">Arrears</div>
+          {% if s.arrears_total > 0 %}
+            <div class="stat-value"><i class="bi bi-exclamation-octagon-fill status-critical fs-5"></i> {{ s.arrears_total|money(false) }}</div>
+            <div class="stat-sub">{{ s.arrears_count }} mortgage{{ '' if s.arrears_count == 1 else 's' }} behind</div>
+          {% else %}
+            <div class="stat-value"><i class="bi bi-check-circle-fill status-good fs-5"></i> None</div>
+            <div class="stat-sub">all scheduled payments received</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-xl-7">
+    <div class="card p-3 h-100">
+      <div class="fw-semibold">Income received, last 12 months</div>
+      <div class="small text-secondary mb-2">Cash basis. Principal repaid is excluded from income (see table).</div>
+      <div class="chart-box"><canvas id="incomeChart" aria-label="Monthly interest and fee income"></canvas></div>
+      {% set rows = [] %}{% for i in range(s.income_chart.labels|length) %}{% set _ = rows.append([s.income_chart.labels[i], s.income_chart.interest[i]|money, s.income_chart.fees[i]|money, s.income_chart.principal[i]|money]) %}{% endfor %}
+      {{ table_view('incomeTable', ['Month', 'Interest', 'Fees', 'Principal repaid'], rows) }}
+    </div>
+  </div>
+  <div class="col-xl-5">
+    <div class="card p-3 h-100">
+      <div class="fw-semibold">Maturity ladder</div>
+      <div class="small text-secondary mb-2">Outstanding balance by quarter of maturity — capital coming back for redeployment or renewal.</div>
+      <div class="chart-box"><canvas id="ladderChart" aria-label="Balance maturing by quarter"></canvas></div>
+      {% set rows = [] %}{% for i in range(s.ladder.labels|length) %}{% set _ = rows.append([s.ladder.labels[i], s.ladder['values'][i]|money]) %}{% endfor %}
+      {{ table_view('ladderTable', ['Quarter', 'Balance maturing'], rows) }}
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-5">
+    <div class="card p-3 h-100">
+      <div class="fw-semibold">Book by combined LTV</div>
+      <div class="small text-secondary mb-2">Balance in each risk band (your loan + prior charges ÷ property value).</div>
+      <div class="chart-box"><canvas id="ltvChart" aria-label="Balance by LTV band"></canvas></div>
+      {% if s.ltv.unknown %}<div class="small text-secondary mt-1">{{ s.ltv.unknown|money(false) }} has no property value recorded.</div>{% endif %}
+      {% set rows = [] %}{% for i in range(s.ltv.labels|length) %}{% set _ = rows.append([s.ltv.labels[i], s.ltv['values'][i]|money]) %}{% endfor %}
+      {{ table_view('ltvTable', ['CLTV band', 'Balance'], rows) }}
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="card p-3 h-100">
+      <div class="fw-semibold mb-2">Concentration</div>
+      <div class="row g-4">
+        {% for title, items in [('Charge position', s.by_position), ('Property type', s.by_type), ('City', s.by_city)] %}
+        <div class="col-md-4">
+          <div class="small text-secondary mb-1">{{ title }}</div>
+          {% for name, value in items %}
+            {% set share = (value / s.total_balance * 100) if s.total_balance else 0 %}
+            <div class="conc-row">
+              <div class="d-flex justify-content-between small"><span>{{ name }}</span><span class="num">{{ '%.0f'|format(share) }}%</span></div>
+              <div class="conc-track" title="{{ value|money }}"><div class="conc-fill" style="width: {{ share }}%"></div></div>
+            </div>
+          {% endfor %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-xl-6">
+    <div class="card h-100">
+      <div class="card-header bg-white fw-semibold">Needs attention <span class="badge text-bg-light">{{ s.alerts|length }}</span></div>
+      <ul class="list-group list-group-flush">
+        {% for level, m, text in s.alerts[:12] %}
+          <li class="list-group-item small d-flex gap-2">
+            <i class="bi {{ {'critical': 'bi-exclamation-octagon-fill status-critical', 'warning': 'bi-exclamation-triangle-fill status-warning', 'info': 'bi-info-circle-fill text-secondary'}[level] }}" aria-label="{{ level }}"></i>
+            <div><a href="{{ url_for('mortgages.detail', mortgage_id=m.id) }}">{{ m.reference }} · {{ m.borrower_name }}</a> — {{ text }}</div>
+          </li>
+        {% else %}
+          <li class="list-group-item small text-secondary"><i class="bi bi-check-circle-fill status-good"></i> Nothing needs attention right now.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  <div class="col-xl-3 col-md-6">
+    <div class="card h-100">
+      <div class="card-header bg-white fw-semibold">Payments due — next 30 days</div>
+      <ul class="list-group list-group-flush">
+        {% for d, m, amount in s.upcoming %}
+          <li class="list-group-item small d-flex justify-content-between gap-2">
+            <span>{{ d.strftime('%b %d') }} · <a href="{{ url_for('mortgages.detail', mortgage_id=m.id) }}">{{ m.borrower_name }}</a></span>
+            <span class="num">{{ amount|money }}</span></li>
+        {% else %}
+          <li class="list-group-item small text-secondary">No payments due.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  <div class="col-xl-3 col-md-6">
+    <div class="card h-100">
+      <div class="card-header bg-white fw-semibold">Recent activity</div>
+      <ul class="list-group list-group-flush">
+        {% for t in s.recent %}
+          <li class="list-group-item small d-flex justify-content-between gap-2">
+            <span>{{ t.date.strftime('%b %d') }} · {{ t.mortgage.borrower_name }}<br><span class="text-secondary">{{ t.type_label }}</span></span>
+            <span class="num">{{ t.signed_amount|money }}</span></li>
+        {% else %}
+          <li class="list-group-item small text-secondary">No transactions yet.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if s.count %}
+<script src="{{ url_for('static', filename='vendor/chartjs/chart.umd.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+<script>
+  const income = {{ s.income_chart|tojson }};
+  PMM.barChart(document.getElementById('incomeChart'), income.labels, [
+    { label: 'Interest', data: income.interest },
+    { label: 'Fees', data: income.fees },
+  ]);
+  const ladder = {{ s.ladder|tojson }};
+  PMM.barChart(document.getElementById('ladderChart'), ladder.labels, [{ label: 'Maturing', data: ladder.values }]);
+  const ltv = {{ s.ltv|tojson }};
+  PMM.barChart(document.getElementById('ltvChart'), ltv.labels, [{ label: 'Balance', data: ltv.values }]);
+</script>
+{% endif %}
 {% endblock %}

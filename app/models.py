@@ -9,7 +9,7 @@ So ``balance = original principal - sum(principal)``.
 """
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import func
@@ -41,7 +41,7 @@ OPEN_STATUSES = ("active", "in_arrears", "default", "matured")
 TXN_TYPES = [
     ("payment", "Regular payment"),
     ("prepayment", "Principal prepayment"),
-    ("fee", "Fee (lender/renewal/NSF/etc.)"),
+    ("fee", "Fee"),
     ("payout", "Payout / discharge"),
     ("advance", "Advance to borrower"),
     ("nsf", "NSF / reversed payment"),
@@ -49,6 +49,8 @@ TXN_TYPES = [
 ]
 INCOME_TYPES = ("payment", "prepayment", "fee", "payout", "nsf", "adjustment")
 REGULAR_PAYMENT_TYPES = ("payment", "nsf")
+# A payment only counts as in arrears once it is this many days past due.
+ARREARS_GRACE_DAYS = 5
 
 
 class TimestampMixin:
@@ -128,6 +130,17 @@ class Mortgage(TimestampMixin, db.Model):
     @property
     def status_label(self):
         return dict(STATUSES).get(self.status, self.status)
+
+    @property
+    def display_status(self):
+        """Stored status, upgraded to "matured" when an active loan is past its maturity date."""
+        if self.status in ("active", "in_arrears") and self.maturity_date < date.today():
+            return "matured"
+        return self.status
+
+    @property
+    def display_status_label(self):
+        return dict(STATUSES).get(self.display_status, self.display_status)
 
     @property
     def property_type_label(self):
@@ -218,12 +231,12 @@ class Mortgage(TimestampMixin, db.Model):
             ZERO,
         )
 
-    def arrears(self, as_of: date | None = None, prime=None) -> Decimal:
-        """Scheduled payments due through ``as_of`` minus regular payments received."""
+    def arrears(self, as_of: date | None = None, prime=None, grace_days: int = ARREARS_GRACE_DAYS) -> Decimal:
+        """Scheduled payments more than ``grace_days`` past due, minus regular payments received."""
         as_of = as_of or date.today()
         if self.status == "paid_out":
             return ZERO
-        due_count = len(self.due_dates(end=as_of))
+        due_count = len(self.due_dates(end=as_of - timedelta(days=grace_days)))
         expected = self.regular_payment(prime) * due_count
         return max(calc.money(expected - self.regular_received(as_of)), ZERO)
 

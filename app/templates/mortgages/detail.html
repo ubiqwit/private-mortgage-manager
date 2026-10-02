@@ -7,7 +7,7 @@
     <a href="{{ url_for('mortgages.index') }}" class="small text-decoration-none"><i class="bi bi-arrow-left"></i> All mortgages</a>
     <h1 class="h3 mb-0">{{ m.reference }} · {{ m.borrower_name }}</h1>
     <div class="text-secondary">{{ m.property_address }}{% if m.property_city %}, {{ m.property_city }}{% endif %} {{ m.property_province or '' }}
-      · <span class="badge badge-status-{{ m.status }}">{{ m.status_label }}</span></div>
+      · <span class="badge badge-status-{{ m.display_status }}">{{ m.display_status_label }}</span></div>
   </div>
   <div class="d-flex gap-2">
     <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('mortgages.schedule', mortgage_id=m.id) }}"><i class="bi bi-table"></i> Payment schedule</a>
@@ -130,7 +130,7 @@
         <tbody>
         {% for t in transactions %}
           <tr>
-            <td>{{ t.date|d }}</td><td>{{ t.type_label }}</td>
+            <td class="text-nowrap">{{ t.date|d }}</td><td>{{ t.type_label }}</td>
             <td class="num {% if t.signed_amount < 0 %}text-danger{% endif %}">{{ t.signed_amount|money }}</td>
             <td class="num">{{ t.interest|money }}</td><td class="num">{{ t.principal|money }}</td><td class="num">{{ t.fees|money }}</td>
             <td class="small">{% if t.bank_transaction %}<i class="bi bi-bank" title="Matched to bank statement"></i> {{ t.bank_transaction.description }}{% endif %}

@@ -1,8 +1,13 @@
 from flask import Blueprint, render_template
 
+from ..services.market import latest, latest_prime, PRIME_SERIES
+from ..services.portfolio import dashboard_stats
+
 bp = Blueprint("dashboard", __name__)
 
 
 @bp.route("/")
 def index():
-    return render_template("dashboard.html")
+    prime = latest_prime()
+    stats = dashboard_stats(prime=prime)
+    return render_template("dashboard.html", s=stats, prime_obs=latest(PRIME_SERIES))

@@ -17,7 +17,7 @@
   ('market.index', 'graph-up-arrow', 'Market & rates'),
 ] %}
 <div class="d-flex app-shell">
-  <nav class="sidebar d-none d-md-flex flex-column p-3">
+  <nav class="sidebar d-none d-md-block"><div class="sidebar-inner d-flex flex-column p-3">
     <a class="brand mb-4" href="{{ url_for('dashboard.index') }}"><i class="bi bi-buildings"></i> Mortgage Manager</a>
     <ul class="nav nav-pills flex-column gap-1">
       {% for endpoint, icon, text in nav if endpoint.split('.')[0] in blueprints_loaded %}
@@ -36,7 +36,7 @@
         · <button class="btn btn-link btn-sm p-0 align-baseline">Sign out</button></form>
     </div>
     {% endif %}
-  </nav>
+  </div></nav>
   <main class="flex-grow-1">
     <nav class="navbar navbar-dark bg-dark d-md-none px-3">
       <a class="navbar-brand" href="{{ url_for('dashboard.index') }}">Mortgage Manager</a>
