@@ -148,11 +148,15 @@ def dashboard_stats(today: date | None = None, prime=None) -> dict:
     order = {"critical": 0, "warning": 1, "info": 2}
     alerts.sort(key=lambda a: (order[a[0]], a[1].reference))
 
-    # Payments due in the next 14 days.
+    # Payments due in the next 30 days that haven't been received yet.
     upcoming = []
     for r in rows:
-        for d in r["m"].due_dates(start=today, end=today + timedelta(days=30)):
-            upcoming.append((d, r["m"], r["payment"]))
+        m = r["m"]
+        received = m.regular_received(today)
+        for d in m.due_dates(start=today, end=today + timedelta(days=30)):
+            if received >= m.scheduled_total(end=d, prime=prime):
+                continue  # already paid (on time or early)
+            upcoming.append((d, m, m.scheduled_payment(d, prime)))
     upcoming.sort(key=lambda u: (u[0], u[1].reference))
 
     recent = (MortgageTransaction.query.order_by(MortgageTransaction.date.desc(), MortgageTransaction.id.desc())
