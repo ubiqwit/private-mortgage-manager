@@ -47,8 +47,8 @@ GitHub Pages only serves static pages, so it can't run this app — it keeps hos
 - [ ] **Bank statements** → upload last month's CSV/OFX export and reconcile.
 - [ ] **Reports** → check last month and download the Excel file.
 - [ ] Bottom-left → **Users** → add your accountant as a **viewer**.
-- [ ] Optional: Render → service → **Environment** → delete `PMM_ADMIN_EMAIL` / `PMM_ADMIN_PASSWORD`
-      (your account is already saved).
+- [ ] Render → service → **Environment** → delete `PMM_ADMIN_PASSWORD` (your account is already saved;
+      see "Locked out" below if you ever need it again).
 
 ## 5. Optional: no wake-up wait
 
@@ -56,6 +56,15 @@ The free app sleeps after 15 minutes idle. To keep it awake, create a free monit
 <https://uptimerobot.com>: type HTTP(s), URL `https://mortgages.shaunmalhotra.com/healthz`, every 5 minutes.
 Render's free hours (750/month) cover one app running all month. The health check doesn't touch the
 database, so Neon still sleeps when you're not using the app.
+
+## Locked out / forgot your password
+
+The free plan has no shell, so recovery is done from Render's settings:
+
+1. Render → service → **Environment**: set `PMM_ADMIN_EMAIL` (your email), `PMM_ADMIN_PASSWORD`
+   (a new password, 10+ characters) and `PMM_ADMIN_RESET` = `1`. **Save** — the app restarts.
+2. Sign in with the new password.
+3. Delete `PMM_ADMIN_RESET` (and the other two if you like) and save again, so it doesn't reset on every restart.
 
 ## Limits to keep an eye on
 

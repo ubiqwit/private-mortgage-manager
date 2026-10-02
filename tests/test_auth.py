@@ -84,3 +84,20 @@ def test_engine_options_handle_neon_pooler():
     assert pooled["connect_args"] == {"prepare_threshold": None}
     direct = _engine_options("postgresql://u:p@ep-cool-1.us-east-2.aws.neon.tech/neondb?sslmode=require")
     assert "connect_args" not in direct and direct["pool_pre_ping"]
+
+
+def test_admin_reset_from_environment(app, monkeypatch):
+    from app import db
+    from app.models import bootstrap_admin_from_env
+
+    user = make_user("owner@example.com")
+    user.active = False
+    db.session.commit()
+    monkeypatch.setenv("PMM_ADMIN_EMAIL", "Owner@example.com")
+    monkeypatch.setenv("PMM_ADMIN_PASSWORD", "brand-new-password")
+    bootstrap_admin_from_env()  # without the reset flag, existing users are left alone
+    assert not db.session.get(User, user.id).check_password("brand-new-password")
+    monkeypatch.setenv("PMM_ADMIN_RESET", "1")
+    bootstrap_admin_from_env()
+    u = db.session.get(User, user.id)
+    assert u.check_password("brand-new-password") and u.active and u.role == "admin"

@@ -604,17 +604,25 @@ class PendingUpload(db.Model):
 def bootstrap_admin_from_env():
     """Create the first admin from PMM_ADMIN_EMAIL / PMM_ADMIN_PASSWORD if no users exist.
 
-    Handy on hosting platforms where you cannot run a shell command before first use.
+    Handy on hosting platforms without shell access (e.g. Render's free plan). Setting
+    PMM_ADMIN_RESET=1 as well is the locked-out recovery path: on start-up that account's
+    password is reset (or the account re-created) and it is made an active admin.
     """
     import os
 
-    email = os.environ.get("PMM_ADMIN_EMAIL")
+    email = (os.environ.get("PMM_ADMIN_EMAIL") or "").strip().lower()
     password = os.environ.get("PMM_ADMIN_PASSWORD")
     if not email or not password:
         return
-    if db.session.query(User.id).first():
+    reset = os.environ.get("PMM_ADMIN_RESET") == "1"
+    if db.session.query(User.id).first() and not reset:
         return
-    user = User(email=email.strip().lower(), name="Owner", role="admin")
-    user.set_password(password)
-    db.session.add(user)
+    user = User.query.filter_by(email=email).first()
+    if user is None:
+        user = User(email=email, name="Owner")
+        db.session.add(user)
+    user.set_password(password)  # also signs out every existing session for this account
+    user.role, user.active = "admin", True
+    if reset:
+        db.session.add(AuditLog(action="admin_reset_from_env", detail=email))
     db.session.commit()
