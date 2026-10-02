@@ -243,6 +243,44 @@
       </div>
     </div>
 
+    <div class="card mt-3" id="activity">
+      <div class="card-header bg-white fw-semibold">Activity &amp; follow-ups</div>
+      {% if current_user.can_edit %}
+      <form method="post" action="{{ url_for('activity.add', mortgage_id=m.id) }}" class="card-body row g-2 align-items-end border-bottom">
+        {{ csrf_field() }}
+        <div class="col-md-3"><select name="kind" class="form-select form-select-sm">{% for v, label in activity_kinds %}<option value="{{ v }}">{{ label }}</option>{% endfor %}</select></div>
+        <div class="col-md-9"><input name="body" class="form-control form-control-sm" placeholder="What happened? e.g. Called borrower about September payment — promised by the 15th" required></div>
+        <div class="col-md-4"><label class="form-label small mb-1">Follow up on (optional)</label>
+          <input type="date" name="follow_up_on" class="form-control form-control-sm"></div>
+        <div class="col-md-8 text-end"><button class="btn btn-sm btn-outline-primary">Add entry</button></div>
+      </form>
+      {% endif %}
+      <ul class="list-group list-group-flush">
+        {% for a in m.activities %}
+          <li class="list-group-item small">
+            <div class="d-flex justify-content-between gap-2">
+              <div><span class="fw-semibold">{{ a.kind_label }}</span> · <span class="text-secondary">{{ a.created_at|local('%b %d, %Y %H:%M') }}{% if a.user %} · {{ a.user.display_name }}{% endif %}</span></div>
+              {% if current_user.can_edit %}
+              <form method="post" action="{{ url_for('activity.delete', activity_id=a.id) }}" onsubmit="return confirm('Delete this entry?')">{{ csrf_field() }}
+                <button class="btn btn-link btn-sm p-0 text-secondary" title="Delete"><i class="bi bi-x-lg"></i></button></form>
+              {% endif %}
+            </div>
+            <div style="white-space:pre-wrap">{{ a.body }}</div>
+            {% if a.follow_up_on %}
+            <form method="post" action="{{ url_for('activity.toggle_done', activity_id=a.id) }}" class="mt-1">{{ csrf_field() }}
+              {% if a.done %}<i class="bi bi-check-circle-fill status-good"></i> Follow-up {{ a.follow_up_on|d }} done
+              {% else %}{% if a.follow_up_on < today %}<i class="bi bi-exclamation-octagon-fill status-critical"></i> Overdue:{% else %}<i class="bi bi-alarm"></i>{% endif %}
+                Follow up {{ a.follow_up_on|d }}{% endif %}
+              {% if current_user.can_edit %}<button class="btn btn-link btn-sm p-0 ms-2">{{ 'Reopen' if a.done else 'Mark done' }}</button>{% endif %}
+            </form>
+            {% endif %}
+          </li>
+        {% else %}
+          <li class="list-group-item small text-secondary">No activity yet. Log calls, emails and notices here to keep a history — useful if a file ever goes to enforcement.</li>
+        {% endfor %}
+      </ul>
+    </div>
+
     {% if current_user.is_admin %}
     <details class="mt-4">
       <summary class="text-danger small">Delete this mortgage</summary>

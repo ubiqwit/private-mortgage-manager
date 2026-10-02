@@ -145,6 +145,16 @@ def dashboard_stats(today: date | None = None, prime=None) -> dict:
             alerts.append(("warning", m, f"Combined LTV {r['cltv']}% — thin equity cushion"))
         if m.appraisal_date and m.appraisal_date < today - relativedelta(years=2):
             alerts.append(("info", m, f"Appraisal is from {m.appraisal_date:%b %Y} — value may be stale"))
+    from ..models import MortgageActivity
+
+    follow_ups = (MortgageActivity.query.filter(MortgageActivity.follow_up_on.isnot(None),
+                                                MortgageActivity.done.is_(False),
+                                                MortgageActivity.follow_up_on <= today + timedelta(days=7)).all())
+    for a in follow_ups:
+        overdue = a.follow_up_on < today
+        when = "overdue since" if overdue else ("due today" if a.follow_up_on == today else "due")
+        alerts.append(("critical" if overdue else "warning", a.mortgage,
+                       f"Follow-up {when} {a.follow_up_on:%b %d}: {a.body[:90]}{'…' if len(a.body) > 90 else ''}"))
     order = {"critical": 0, "warning": 1, "info": 2}
     alerts.sort(key=lambda a: (order[a[0]], a[1].reference))
 

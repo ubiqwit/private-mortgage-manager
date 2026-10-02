@@ -128,6 +128,12 @@ class Mortgage(TimestampMixin, db.Model):
         cascade="all, delete-orphan",
         order_by="TermHistory.valid_until",
     )
+    activities = db.relationship(
+        "MortgageActivity",
+        back_populates="mortgage",
+        cascade="all, delete-orphan",
+        order_by="MortgageActivity.created_at.desc()",
+    )
     documents = db.relationship(
         "MortgageDocument",
         back_populates="mortgage",
@@ -329,6 +335,40 @@ class MortgageTransaction(TimestampMixin, db.Model):
         """Cash in (+) / out (-) from the lender's point of view."""
         amt = Decimal(str(self.amount))
         return -amt if self.type in ("advance", "nsf", "funding") else amt
+
+
+ACTIVITY_KINDS = [
+    ("note", "Note"),
+    ("call", "Phone call"),
+    ("email", "Email"),
+    ("meeting", "Meeting"),
+    ("letter", "Letter / notice"),
+    ("legal", "Legal / enforcement"),
+]
+
+
+class MortgageActivity(db.Model):
+    """A dated entry in a mortgage's activity log, optionally with a follow-up date."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    mortgage_id = db.Column(db.Integer, db.ForeignKey("mortgage.id"), nullable=False, index=True)
+    kind = db.Column(db.String(20), nullable=False, default="note")
+    body = db.Column(db.Text, nullable=False)
+    follow_up_on = db.Column(db.Date, index=True)
+    done = db.Column(db.Boolean, nullable=False, default=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+
+    mortgage = db.relationship("Mortgage", back_populates="activities")
+    user = db.relationship("User")
+
+    @property
+    def kind_label(self):
+        return dict(ACTIVITY_KINDS).get(self.kind, self.kind)
+
+    @property
+    def open_follow_up(self):
+        return self.follow_up_on is not None and not self.done
 
 
 DOCUMENT_CATEGORIES = [

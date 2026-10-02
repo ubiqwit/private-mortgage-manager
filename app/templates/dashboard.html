@@ -140,7 +140,9 @@
 <div class="row g-3">
   <div class="col-xl-6">
     <div class="card h-100">
-      <div class="card-header bg-white fw-semibold">Needs attention <span class="badge text-bg-light">{{ s.alerts|length }}</span></div>
+      <div class="card-header bg-white fw-semibold d-flex justify-content-between">
+        <span>Needs attention <span class="badge text-bg-light">{{ s.alerts|length }}</span></span>
+        <a class="small fw-normal" href="{{ url_for('activity.follow_ups') }}">All follow-ups</a></div>
       <ul class="list-group list-group-flush">
         {% for level, m, text in s.alerts[:12] %}
           <li class="list-group-item small d-flex gap-2">
