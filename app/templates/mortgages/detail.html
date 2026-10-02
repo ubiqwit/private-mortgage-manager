@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% block title %}{{ m.reference }} — {{ m.borrower_name }}{% endblock %}
+{% macro row(label, value) %}<tr><th class="text-secondary fw-normal small" style="width:45%">{{ label }}</th><td>{{ value if value not in (none, '') else '—' }}</td></tr>{% endmacro %}
+{% block content %}
+<div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
+  <div>
+    <a href="{{ url_for('mortgages.index') }}" class="small text-decoration-none"><i class="bi bi-arrow-left"></i> All mortgages</a>
+    <h1 class="h3 mb-0">{{ m.reference }} · {{ m.borrower_name }}</h1>
+    <div class="text-secondary">{{ m.property_address }}{% if m.property_city %}, {{ m.property_city }}{% endif %} {{ m.property_province or '' }}
+      · <span class="badge badge-status-{{ m.status }}">{{ m.status_label }}</span></div>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('mortgages.schedule', mortgage_id=m.id) }}"><i class="bi bi-table"></i> Payment schedule</a>
+    {% if current_user.can_edit %}
+    <a class="btn btn-primary btn-sm" href="{{ url_for('mortgages.edit', mortgage_id=m.id) }}"><i class="bi bi-pencil"></i> Edit</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  {% for label, value, sub in [
+    ('Balance', s.balance|money, 'of ' ~ (m.principal_amount|money) ~ ' advanced'),
+    ('Current rate', s.rate|pct, ('Prime ' ~ (prime|pct) ~ ' + ' ~ (m.prime_spread|pct)) if m.rate_type == 'variable' and prime else (m.compounding.replace('_',' ') ~ ' compounding')),
+    ('Payment', s.payment|money, m.payment_frequency.replace('_',' ') ~ ', ' ~ m.payment_type.replace('_',' ')),
+    ('Next payment', s.next_due|d, 'Last received: ' ~ ((s.last_payment.date|d) if s.last_payment else 'none')),
+    ('Arrears', s.arrears|money if s.arrears > 0 else 'None', 'scheduled vs received to date'),
+    ('Maturity', m.maturity_date|d, (s.days_to_maturity ~ ' days') if s.days_to_maturity >= 0 else ((-s.days_to_maturity) ~ ' days overdue')),
+  ] %}
+  <div class="col-6 col-lg-2">
+    <div class="card stat-card h-100 p-3">
+      <div class="stat-label">{{ label }}</div>
+      <div class="stat-value {% if label == 'Arrears' and s.arrears > 0 %}text-danger{% endif %}" style="font-size:1.25rem">{{ value }}</div>
+      <div class="stat-sub">{{ sub }}</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-4">
+    <div class="card mb-3"><div class="card-header bg-white fw-semibold">Loan</div>
+      <table class="table table-sm mb-0">
+        {{ row('Position', m.position_label ~ ' charge') }}
+        {{ row('Rate type', 'Variable — prime + ' ~ (m.prime_spread|pct) ~ ((', floor ' ~ (m.rate_floor|pct)) if m.rate_floor else '') if m.rate_type == 'variable' else 'Fixed ' ~ (m.interest_rate|pct)) }}
+        {{ row('Funded', m.funded_date|d) }}
+        {{ row('First payment', m.first_payment_date|d) }}
+        {{ row('Term', (m.term_months ~ ' months') if m.term_months else none) }}
+        {{ row('Amortization', (m.amortization_months ~ ' months') if m.amortization_months else none) }}
+        {{ row('Annual interest at current balance', s.annual_interest|money) }}
+        {{ row('Your share', m.ownership_pct|pct(0)) }}
+        {{ row('Prepayment', m.prepayment_terms) }}
+      </table>
+    </div>
+    <div class="card mb-3"><div class="card-header bg-white fw-semibold">Security</div>
+      <table class="table table-sm mb-0">
+        {{ row('Property type', m.property_type_label) }}
+        {{ row('Value', (m.property_value|money) ~ ((' (appraised ' ~ (m.appraisal_date|d) ~ ')') if m.appraisal_date else '')) if m.property_value else none }}
+        {{ row('Prior charges', m.prior_charges|money if m.prior_charges else none) }}
+        {{ row('LTV (this loan)', s.ltv|pct(1) if s.ltv is not none else none) }}
+        {{ row('Combined LTV', s.cltv|pct(1) if s.cltv is not none else none) }}
+        {{ row('PIN / legal', m.pin) }}
+        {{ row('Insurance expiry', m.insurance_expiry|d if m.insurance_expiry else none) }}
+        {{ row('Property tax', m.property_tax_status) }}
+      </table>
+    </div>
+    <div class="card mb-3"><div class="card-header bg-white fw-semibold">Borrower &amp; parties</div>
+      <table class="table table-sm mb-0">
+        {{ row('Email', m.borrower_email) }}
+        {{ row('Phone', m.borrower_phone) }}
+        {{ row('Guarantors', m.guarantors) }}
+        {{ row('Broker', (m.broker_name or '') ~ ((' — fee ' ~ (m.broker_fee|money)) if m.broker_fee else '')) }}
+        {{ row('Lawyer', m.lawyer_name) }}
+        {{ row('Lender fee', m.lender_fee|money if m.lender_fee else none) }}
+        {{ row('Renewal fee', m.renewal_fee|money if m.renewal_fee else none) }}
+        {{ row('NSF fee', m.nsf_fee|money if m.nsf_fee else none) }}
+        {{ row('Bank keywords', m.keywords|join(', ')) }}
+      </table>
+    </div>
+    {% if m.notes %}<div class="card mb-3"><div class="card-header bg-white fw-semibold">Notes</div>
+      <div class="card-body small" style="white-space:pre-wrap">{{ m.notes }}</div></div>{% endif %}
+  </div>
+
+  <div class="col-lg-8">
+    <div class="row g-3 mb-3">
+      <div class="col-md-6"><div class="card p-3 h-100">
+        <div class="stat-label small text-uppercase text-secondary">Received year to date</div>
+        <div class="d-flex justify-content-between mt-1"><span>Interest</span><span class="num">{{ s.ytd.interest|money }}</span></div>
+        <div class="d-flex justify-content-between"><span>Fees</span><span class="num">{{ s.ytd.fees|money }}</span></div>
+        <div class="d-flex justify-content-between"><span>Principal</span><span class="num">{{ s.ytd.principal|money }}</span></div>
+      </div></div>
+      <div class="col-md-6"><div class="card p-3 h-100">
+        <div class="stat-label small text-uppercase text-secondary">Since funding</div>
+        <div class="d-flex justify-content-between mt-1"><span>Interest</span><span class="num">{{ s.lifetime.interest|money }}</span></div>
+        <div class="d-flex justify-content-between"><span>Fees</span><span class="num">{{ s.lifetime.fees|money }}</span></div>
+        <div class="d-flex justify-content-between"><span>Principal</span><span class="num">{{ s.lifetime.principal|money }}</span></div>
+      </div></div>
+    </div>
+
+    {% if current_user.can_edit %}
+    <div class="card mb-3">
+      <div class="card-header bg-white fw-semibold">Record a transaction</div>
+      <form method="post" action="{{ url_for('mortgages.add_transaction', mortgage_id=m.id) }}" class="card-body row g-2 align-items-end" id="txn-form">
+        {{ csrf_field() }}
+        <div class="col-md-3"><label class="form-label small mb-1">Type</label>
+          <select name="type" class="form-select form-select-sm">{% for v, t in txn_types %}<option value="{{ v }}">{{ t }}</option>{% endfor %}</select></div>
+        <div class="col-md-2"><label class="form-label small mb-1">Date</label>
+          <input type="date" name="date" class="form-control form-control-sm" value="{{ today.isoformat() }}" required></div>
+        <div class="col-md-2"><label class="form-label small mb-1">Amount</label>
+          <input type="number" step="0.01" name="amount" class="form-control form-control-sm" value="{{ s.payment }}" required></div>
+        <div class="col-md-5"><label class="form-label small mb-1">Notes</label>
+          <input name="notes" class="form-control form-control-sm" placeholder="Optional"></div>
+        <div class="col-md-2"><label class="form-label small mb-1">Interest</label>
+          <input type="number" step="0.01" name="interest" class="form-control form-control-sm"></div>
+        <div class="col-md-2"><label class="form-label small mb-1">Principal</label>
+          <input type="number" step="0.01" name="principal" class="form-control form-control-sm"></div>
+        <div class="col-md-2"><label class="form-label small mb-1">Fees</label>
+          <input type="number" step="0.01" name="fees" class="form-control form-control-sm"></div>
+        <div class="col-md-3 small text-secondary">Split is suggested automatically — adjust if needed.</div>
+        <div class="col-md-3 text-end"><button class="btn btn-primary btn-sm">Record</button></div>
+      </form>
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <div class="card-header bg-white fw-semibold">Transactions</div>
+      <div class="table-responsive">
+      <table class="table table-sm mb-0">
+        <thead class="table-light"><tr><th>Date</th><th>Type</th><th class="num">Amount</th><th class="num">Interest</th>
+          <th class="num">Principal</th><th class="num">Fees</th><th>Source / notes</th><th></th></tr></thead>
+        <tbody>
+        {% for t in transactions %}
+          <tr>
+            <td>{{ t.date|d }}</td><td>{{ t.type_label }}</td>
+            <td class="num {% if t.signed_amount < 0 %}text-danger{% endif %}">{{ t.signed_amount|money }}</td>
+            <td class="num">{{ t.interest|money }}</td><td class="num">{{ t.principal|money }}</td><td class="num">{{ t.fees|money }}</td>
+            <td class="small">{% if t.bank_transaction %}<i class="bi bi-bank" title="Matched to bank statement"></i> {{ t.bank_transaction.description }}{% endif %}
+              {{ t.notes or '' }}</td>
+            <td class="text-end">{% if current_user.can_edit %}
+              <form method="post" action="{{ url_for('mortgages.delete_transaction', txn_id=t.id) }}" onsubmit="return confirm('Remove this transaction?')">
+                {{ csrf_field() }}<button class="btn btn-link btn-sm text-danger p-0" title="Remove"><i class="bi bi-trash"></i></button></form>
+            {% endif %}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="8" class="text-center text-secondary py-4">No transactions yet. Record one above or match bank statement deposits.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+
+    {% if current_user.is_admin %}
+    <details class="mt-4">
+      <summary class="text-danger small">Delete this mortgage</summary>
+      <form method="post" action="{{ url_for('mortgages.delete', mortgage_id=m.id) }}" class="d-flex gap-2 mt-2" style="max-width:420px">
+        {{ csrf_field() }}
+        <input name="confirm" class="form-control form-control-sm" placeholder="Type {{ m.reference }} to confirm">
+        <button class="btn btn-sm btn-danger">Delete</button>
+      </form>
+      <div class="form-text">Removes the mortgage and its transactions. Matched bank lines return to the unmatched queue. Usually you want status “Paid out” instead.</div>
+    </details>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const form = document.getElementById('txn-form');
+  if (!form) return;
+  const url = "{{ url_for('mortgages.split', mortgage_id=m.id) }}";
+  const f = (n) => form.elements[n];
+  async function refresh() {
+    const params = new URLSearchParams({ amount: f('amount').value || 0, date: f('date').value, type: f('type').value });
+    const resp = await fetch(url + '?' + params);
+    if (!resp.ok) return;
+    const s = await resp.json();
+    f('interest').value = s.interest; f('principal').value = s.principal; f('fees').value = s.fees;
+  }
+  ['amount', 'date', 'type'].forEach((n) => f(n).addEventListener('change', refresh));
+  refresh();
+})();
+</script>
+{% endblock %}

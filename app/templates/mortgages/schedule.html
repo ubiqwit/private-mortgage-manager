@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Schedule — {{ m.reference }}{% endblock %}
+{% block content %}
+<a href="{{ url_for('mortgages.detail', mortgage_id=m.id) }}" class="small text-decoration-none"><i class="bi bi-arrow-left"></i> {{ m.reference }}</a>
+<h1 class="h3">Payment schedule · {{ m.borrower_name }}</h1>
+<p class="text-secondary">Projected from the original terms: {{ m.principal_amount|money }} at {{ m.effective_rate(prime)|pct }}
+  ({{ m.compounding.replace('_',' ') }} compounding), {{ m.payment_type.replace('_',' ') }}, {{ m.payment_frequency.replace('_',' ') }} payments,
+  maturing {{ m.maturity_date|d }}. Actual payments are tracked on the mortgage page.</p>
+<div class="card"><div class="table-responsive">
+<table class="table table-sm table-striped mb-0">
+  <thead class="table-light"><tr><th>#</th><th>Due date</th><th class="num">Payment</th><th class="num">Interest</th><th class="num">Principal</th><th class="num">Balance after</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr class="{% if r.due_date < today %}text-secondary{% endif %} {% if r.balloon %}fw-semibold table-warning{% endif %}">
+      <td>{{ r.number }}</td><td>{{ r.due_date|d }}</td><td class="num">{{ r.payment|money }}{% if r.balloon %} <span class="badge text-bg-warning">balloon</span>{% endif %}</td>
+      <td class="num">{{ r.interest|money }}</td><td class="num">{{ r.principal|money }}</td><td class="num">{{ r.balance|money }}</td></tr>
+  {% endfor %}
+  </tbody>
+  <tfoot class="table-light fw-semibold"><tr><td colspan="2">Total</td><td class="num">{{ totals.payment|money }}</td>
+    <td class="num">{{ totals.interest|money }}</td><td class="num">{{ totals.principal|money }}</td><td></td></tr></tfoot>
+</table>
+</div></div>
+{% endblock %}

@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% macro field(name, label, type='text', col='col-md-4', help=None, step=None, required=False, value=None) %}
+  {% set v = value if value is not none else m[name] %}
+  <div class="{{ col }}">
+    <label class="form-label small mb-1" for="f_{{ name }}">{{ label }}{% if required %} <span class="text-danger">*</span>{% endif %}</label>
+    <input class="form-control form-control-sm" id="f_{{ name }}" name="{{ name }}" type="{{ type }}"
+      {% if step %}step="{{ step }}"{% endif %} {% if required %}required{% endif %}
+      value="{{ (v.isoformat() if v and type == 'date' else v) if v is not none else '' }}">
+    {% if help %}<div class="form-text">{{ help }}</div>{% endif %}
+  </div>
+{% endmacro %}
+{% macro select(name, label, options, col='col-md-4') %}
+  <div class="{{ col }}">
+    <label class="form-label small mb-1" for="f_{{ name }}">{{ label }}</label>
+    <select class="form-select form-select-sm" id="f_{{ name }}" name="{{ name }}">
+      {% for value, text in options %}
+        <option value="{{ value }}" {% if (m[name]|string) == (value|string) %}selected{% endif %}>{{ text }}</option>
+      {% endfor %}
+    </select>
+  </div>
+{% endmacro %}
+{% block content %}
+<h1 class="h3 mb-3">{{ 'Edit ' ~ m.reference if m.id else 'New mortgage' }}</h1>
+<form method="post" class="card p-4" style="max-width:1100px">
+  {{ csrf_field() }}
+
+  <div class="form-section">Borrower</div>
+  <div class="row g-3">
+    {{ field('reference', 'Reference', col='col-md-2') }}
+    {{ field('borrower_name', 'Borrower name(s)', col='col-md-4', required=True) }}
+    {{ field('borrower_email', 'Email', 'email', col='col-md-3') }}
+    {{ field('borrower_phone', 'Phone', col='col-md-3') }}
+    {{ field('guarantors', 'Guarantors', col='col-md-6') }}
+  </div>
+
+  <div class="form-section">Security (property)</div>
+  <div class="row g-3">
+    {{ field('property_address', 'Street address', col='col-md-5', required=True) }}
+    {{ field('property_city', 'City', col='col-md-3') }}
+    {{ field('property_province', 'Province', col='col-md-1') }}
+    {{ select('property_type', 'Property type', property_types, col='col-md-3') }}
+    {{ field('property_value', 'Property value ($)', 'number', 'col-md-3', step='0.01') }}
+    {{ field('appraisal_date', 'Appraisal date', 'date', 'col-md-3') }}
+    {{ select('position', 'Charge position', [(1,'1st'),(2,'2nd'),(3,'3rd')], col='col-md-2') }}
+    {{ field('prior_charges', 'Prior charges balance ($)', 'number', 'col-md-2', help='Mortgages ranking ahead of yours', step='0.01') }}
+    {{ field('pin', 'PIN / legal ref.', col='col-md-2') }}
+  </div>
+
+  <div class="form-section">Loan terms</div>
+  <div class="row g-3">
+    {{ field('principal_amount', 'Principal advanced ($)', 'number', 'col-md-3', step='0.01', required=True) }}
+    {{ select('rate_type', 'Rate type', [('fixed','Fixed'),('variable','Variable (prime + spread)')], col='col-md-3') }}
+    {{ field('interest_rate', 'Interest rate (%)', 'number', 'col-md-2', help='For variable: the rate at funding (used if prime is unknown)', step='0.0001', required=True) }}
+    {{ field('prime_spread', 'Spread over prime (%)', 'number', 'col-md-2', step='0.0001') }}
+    {{ field('rate_floor', 'Rate floor (%)', 'number', 'col-md-2', step='0.0001') }}
+    {{ select('compounding', 'Compounding', [('monthly','Monthly'),('semi_annual','Semi-annual'),('annual','Annual')], col='col-md-3') }}
+    {{ select('payment_type', 'Payment type', [('interest_only','Interest only'),('amortizing','Blended principal + interest')], col='col-md-3') }}
+    {{ select('payment_frequency', 'Payment frequency', [('monthly','Monthly'),('semi_monthly','Semi-monthly'),('biweekly','Bi-weekly'),('weekly','Weekly'),('quarterly','Quarterly'),('annually','Annually')], col='col-md-3') }}
+    {{ field('amortization_months', 'Amortization (months)', 'number', 'col-md-3', help='Blended payments only, e.g. 300 = 25 yrs') }}
+    {{ field('payment_amount', 'Payment amount ($)', 'number', 'col-md-3', help='Leave blank to calculate', step='0.01') }}
+    {{ field('funded_date', 'Funded / IAD date', 'date', 'col-md-3', required=True) }}
+    {{ field('first_payment_date', 'First payment date', 'date', 'col-md-3', help='Blank = one month after funding') }}
+    {{ field('term_months', 'Term (months)', 'number', 'col-md-3') }}
+    {{ field('maturity_date', 'Maturity date', 'date', 'col-md-3', help='Blank = funded date + term') }}
+    {{ field('ownership_pct', 'Your share (%)', 'number', 'col-md-3', help='Less than 100 if syndicated', step='0.01') }}
+    {{ select('status', 'Status', statuses, col='col-md-3') }}
+  </div>
+
+  <div class="form-section">Fees &amp; parties</div>
+  <div class="row g-3">
+    {{ field('lender_fee', 'Lender fee ($)', 'number', 'col-md-2', step='0.01') }}
+    {{ field('renewal_fee', 'Renewal fee ($)', 'number', 'col-md-2', step='0.01') }}
+    {{ field('nsf_fee', 'NSF fee ($)', 'number', 'col-md-2', step='0.01') }}
+    {{ field('broker_name', 'Broker / brokerage', col='col-md-3') }}
+    {{ field('broker_fee', 'Broker fee ($)', 'number', 'col-md-3', step='0.01') }}
+    {{ field('lawyer_name', 'Lawyer', col='col-md-4') }}
+    {{ field('prepayment_terms', 'Prepayment terms', col='col-md-8', help='e.g. "Open after 6 months" or "3 months interest penalty"') }}
+    {{ field('insurance_expiry', 'Insurance expiry', 'date', 'col-md-3') }}
+    {{ field('property_tax_status', 'Property tax status', col='col-md-4') }}
+    {% if not m.id %}
+    <div class="col-md-5 d-flex align-items-end">
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" name="record_lender_fee" value="1" id="f_rlf" checked>
+        <label class="form-check-label small" for="f_rlf">Record the lender fee as income on the funded date</label>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="form-section">Bank matching &amp; notes</div>
+  <div class="row g-3">
+    <div class="col-md-6">
+      <label class="form-label small mb-1" for="f_match_keywords">Bank description keywords (one per line)</label>
+      <textarea class="form-control form-control-sm" rows="3" id="f_match_keywords" name="match_keywords">{{ m.match_keywords or '' }}</textarea>
+      <div class="form-text">Text that appears on your bank statement when this borrower pays, e.g. <code>E-TRANSFER J SMITH</code>. Matching also learns these automatically.</div>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label small mb-1" for="f_notes">Notes</label>
+      <textarea class="form-control form-control-sm" rows="3" id="f_notes" name="notes">{{ m.notes or '' }}</textarea>
+    </div>
+  </div>
+
+  <div class="mt-4 d-flex gap-2">
+    <button class="btn btn-primary">Save</button>
+    <a class="btn btn-outline-secondary" href="{{ url_for('mortgages.detail', mortgage_id=m.id) if m.id else url_for('mortgages.index') }}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

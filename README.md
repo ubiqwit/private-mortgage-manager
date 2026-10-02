@@ -10,7 +10,8 @@ reports for their accountant.
 python3 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-python run.py                      # open http://127.0.0.1:5000
+flask --app run create-user you@example.com   # create your login
+python run.py                                 # open http://127.0.0.1:5000
 ```
 
 Data is stored in `instance/mortgages.db` (SQLite). Back this file up regularly.
