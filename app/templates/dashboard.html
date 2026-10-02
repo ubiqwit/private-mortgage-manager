@@ -22,10 +22,18 @@
     <div class="text-secondary small">{{ today|d }}</div>
   </div>
   {% if prime_obs %}
-  <a href="{{ url_for('market.index') if 'market' in blueprints_loaded else '#' }}" class="text-decoration-none small text-secondary">
+  <a href="{{ url_for('market.index') }}" class="text-decoration-none small text-secondary">
     <i class="bi bi-graph-up-arrow"></i> Prime rate {{ prime_obs.value|pct }} <span class="text-muted">(as of {{ prime_obs.date|d }})</span></a>
   {% endif %}
 </div>
+
+{% if policy_change %}
+<div class="alert alert-light border d-flex gap-2 align-items-start">
+  <i class="bi {{ 'bi-arrow-down-circle-fill' if policy_change[3] < 0 else 'bi-arrow-up-circle-fill' }} fs-5"></i>
+  <div><strong>Bank of Canada {{ 'cut' if policy_change[3] < 0 else 'raised' }} the policy rate {{ policy_change[3]|abs }} bp</strong> on {{ policy_change[0]|d }}
+    to {{ '%.2f'|format(policy_change[2]) }}%. <a href="{{ url_for('market.index') }}">See the impact on your mortgages</a>.</div>
+</div>
+{% endif %}
 
 {% if not s.count %}
   <div class="card p-5 text-center">

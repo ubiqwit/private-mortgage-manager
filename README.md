@@ -67,3 +67,20 @@ Always put it behind HTTPS (all the platforms above do this for you). See
 flask --app run create-user you@example.com --role admin
 flask --app run reset-password you@example.com
 ```
+
+## Live market data
+
+The **Market & rates** page pulls the Bank of Canada policy rate, prime, the posted
+5-year mortgage rate, Government of Canada 2/5/10-year yields and CPI from the free
+[Bank of Canada Valet API](https://www.bankofcanada.ca/valet/docs), plus news from RSS
+feeds you can edit (Bank of Canada press releases and Google News searches by default).
+Data refreshes in the background when the page is opened and is more than 6 hours old,
+or on demand. To refresh on a schedule (e.g. a Render cron job):
+
+```bash
+flask --app run refresh-market
+```
+
+Variable-rate mortgages (prime + spread, optional floor) are priced from the latest
+prime. If your server can't reach the Bank of Canada you can enter prime by hand on the
+same page.

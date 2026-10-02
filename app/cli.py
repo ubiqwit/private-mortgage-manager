@@ -11,6 +11,16 @@ from .timeutil import today as local_today
 def register_cli(app):
     register_seed(app)
 
+    @app.cli.command("refresh-market")
+    def refresh_market():
+        """Fetch the latest Bank of Canada rates and news (run from a scheduled job)."""
+        from .services import market
+
+        result = market.refresh(force=True)
+        click.echo(f"New observations: {sum(result['series'].values())}, news items: {result['news']}")
+        for err in result["errors"]:
+            click.echo(f"  ! {err}", err=True)
+
     @app.cli.command("create-user")
     @click.argument("email")
     @click.option("--name", default=None)

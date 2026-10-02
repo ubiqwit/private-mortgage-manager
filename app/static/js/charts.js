@@ -62,3 +62,41 @@ window.PMM = window.PMM || {};
     });
   };
 })(window.PMM);
+
+/* Line chart over a shared category axis of ISO dates. datasets: [{label, data: [number|null]}]. */
+(function (PMM) {
+  const INK = { muted: '#898781', grid: '#e1e0d9', axis: '#c3c2b7' };
+  const fmtDate = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString('en-CA', { month: 'short', year: 'numeric' });
+  PMM.lineChart = function (canvas, labels, datasets, opts) {
+    opts = opts || {};
+    const suffix = opts.suffix || '%';
+    return new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: datasets.map((d, i) => ({
+          label: d.label, data: d.data, borderColor: d.color || PMM.SERIES[i], backgroundColor: d.color || PMM.SERIES[i],
+          borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, pointHoverBorderWidth: 2, pointHoverBorderColor: PMM.SURFACE,
+          stepped: opts.stepped ? 'before' : false, tension: 0, spanGaps: true, borderJoinStyle: 'round', borderCapStyle: 'round',
+        })),
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: datasets.length > 1 },
+          tooltip: { callbacks: {
+            title: (items) => new Date(items[0].label + 'T00:00:00').toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' }),
+            label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y == null ? '—' : ctx.parsed.y.toFixed(2) + suffix}`,
+          } },
+        },
+        scales: {
+          x: { grid: { display: false }, border: { color: INK.axis },
+               ticks: { color: INK.muted, maxTicksLimit: 6, autoSkipPadding: 16, maxRotation: 0, callback: function (v) { return fmtDate(this.getLabelForValue(v)); } } },
+          y: { grid: { color: INK.grid, lineWidth: 1, drawTicks: false }, border: { display: false },
+               ticks: { color: INK.muted, padding: 6, maxTicksLimit: 6, callback: (v) => v + suffix } },
+        },
+      },
+    });
+  };
+})(window.PMM);
