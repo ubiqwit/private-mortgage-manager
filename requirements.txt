@@ -8,3 +8,4 @@ gunicorn>=22,<27
 psycopg[binary]>=3.1,<4
 tzdata>=2024.1
 Flask-Migrate>=4,<5
+defusedxml>=0.7

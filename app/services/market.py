@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import html
 import re
-import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -234,7 +233,9 @@ def strip_html(text: str) -> str:
 
 def parse_feed(xml_bytes: bytes, source: str):
     """Items from RSS 2.0 or Atom: [dict(title, link, published, summary, source)]."""
-    root = ET.fromstring(xml_bytes)
+    from defusedxml.ElementTree import fromstring  # external content: refuse entity tricks
+
+    root = fromstring(xml_bytes)
     items = []
     atom = "{http://www.w3.org/2005/Atom}"
     for item in root.iter("item"):

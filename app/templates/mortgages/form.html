@@ -19,6 +19,7 @@
     </select>
   </div>
 {% endmacro %}
+{% block title %}{{ 'Edit ' ~ m.reference if m.id else 'New mortgage' }} — Private Mortgage Manager{% endblock %}
 {% block content %}
 <h1 class="h3 mb-3">{{ 'Edit ' ~ m.reference if m.id else 'New mortgage' }}</h1>
 <form method="post" class="card p-4" style="max-width:1100px">

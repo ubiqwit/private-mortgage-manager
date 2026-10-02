@@ -1,0 +1,10 @@
+{% extends "base.html" if current_user else "error_bare.html" %}
+{% block title %}{{ code }} — Private Mortgage Manager{% endblock %}
+{% block content %}
+<div class="card p-5 text-center mx-auto" style="max-width:560px">
+  <div class="display-6 text-secondary">{{ code }}</div>
+  <h1 class="h4 mt-2">{{ message }}</h1>
+  {% if detail %}<p class="text-secondary">{{ detail }}</p>{% endif %}
+  <div><a class="btn btn-primary mt-2" href="{{ url_for('dashboard.index') }}">Back to the dashboard</a></div>
+</div>
+{% endblock %}

@@ -13,6 +13,7 @@ from ..models import BankTransaction, Mortgage, MortgageTransaction
 from ..timeutil import now as local_now
 from ..timeutil import today as local_today
 from . import calc
+from .safety import csv_safe, set_text_cell
 
 ZERO = Decimal("0.00")
 
@@ -164,10 +165,11 @@ def transactions_csv(report: dict) -> str:
                 "Bank account", "Bank description", "Notes"])
     for t in report["transactions"]:
         bt = t.bank_transaction
-        w.writerow([t.date.isoformat(), t.mortgage.reference, t.mortgage.borrower_name, t.mortgage.property_address,
-                    t.type_label, f"{t.signed_amount:.2f}", f"{Decimal(str(t.interest or 0)):.2f}",
-                    f"{Decimal(str(t.principal or 0)):.2f}", f"{Decimal(str(t.fees or 0)):.2f}",
-                    bt.account_name if bt else "", bt.description if bt else "", t.notes or ""])
+        w.writerow([t.date.isoformat()] + [csv_safe(v) for v in (
+            t.mortgage.reference, t.mortgage.borrower_name, t.mortgage.property_address, t.type_label)] + [
+            f"{t.signed_amount:.2f}", f"{Decimal(str(t.interest or 0)):.2f}",
+            f"{Decimal(str(t.principal or 0)):.2f}", f"{Decimal(str(t.fees or 0)):.2f}"] + [csv_safe(v) for v in (
+            bt.account_name if bt else "", bt.description if bt else "", t.notes or "")])
     return out.getvalue()
 
 
@@ -206,7 +208,7 @@ def month_end_workbook(report: dict, prepared_by: str = "") -> bytes:
         r = 5
         for values in rows:
             for i, v in enumerate(values, start=1):
-                c = ws.cell(row=r, column=i, value=float(v) if isinstance(v, Decimal) else v)
+                c = set_text_cell(ws.cell(row=r, column=i), float(v) if isinstance(v, Decimal) else v)
                 fmt = columns[i - 1][2]
                 if fmt:
                     c.number_format = fmt

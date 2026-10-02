@@ -9,6 +9,23 @@ from ..models import ROLES, AuditLog, User, audit
 bp = Blueprint("auth", __name__)
 
 MAX_FAILURES = 5
+
+
+class _Dummy:
+    """Unknown emails still pay for a password check, so response time doesn't reveal which emails exist."""
+
+    from werkzeug.security import generate_password_hash as _gen
+
+    password_hash = _gen("not-a-real-password")
+
+    def check_password(self, password):
+        from werkzeug.security import check_password_hash
+
+        check_password_hash(self.password_hash, password or "")
+        return False
+
+
+_DUMMY_USER = _Dummy()
 LOCKOUT = timedelta(minutes=15)
 
 
@@ -31,7 +48,8 @@ def login():
             flash("Too many failed attempts. Wait 15 minutes and try again.", "danger")
             return render_template("login.html", no_users=no_users), 429
         user = User.query.filter_by(email=email).first()
-        if user and user.active and user.check_password(request.form.get("password", "")):
+        password_ok = (user or _DUMMY_USER).check_password(request.form.get("password", ""))  # same cost either way
+        if user and user.active and password_ok:
             session.clear()
             session.permanent = True
             session["user_id"] = user.id

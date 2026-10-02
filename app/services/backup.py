@@ -16,6 +16,7 @@ from ..models import (
     User,
 )
 from ..timeutil import now as local_now
+from .safety import set_text_cell
 
 SHEETS = [
     ("Mortgages", Mortgage, None),
@@ -54,8 +55,9 @@ def export_workbook() -> bytes:
         ws.append(cols)
         for c in ws[1]:
             c.font, c.fill = Font(bold=True, color="FFFFFF"), PatternFill("solid", fgColor="14213D")
-        for row in model.query.order_by(*model.__table__.primary_key.columns).all():
-            ws.append([_cell(getattr(row, c)) for c in cols])
+        for r, row in enumerate(model.query.order_by(*model.__table__.primary_key.columns).all(), start=2):
+            for i, c in enumerate(cols, start=1):
+                set_text_cell(ws.cell(row=r, column=i), _cell(getattr(row, c)))
         for i, col in enumerate(cols, start=1):
             ws.column_dimensions[get_column_letter(i)].width = max(10, min(40, len(col) + 4))
         ws.freeze_panes = "A2"

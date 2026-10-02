@@ -100,6 +100,27 @@ def create_app(test_config=None):
     def health():
         return {"status": "ok"}
 
+    from flask import render_template
+
+    @app.errorhandler(400)
+    @app.errorhandler(403)
+    @app.errorhandler(404)
+    @app.errorhandler(413)
+    @app.errorhandler(500)
+    def error_page(err):
+        code = getattr(err, "code", 500) or 500
+        messages = {
+            400: "That request couldn't be processed.",
+            403: "You don't have permission to do that.",
+            404: "That page doesn't exist.",
+            413: "That file is too large (20 MB maximum).",
+            500: "Something went wrong on our side. Nothing was saved — please try again.",
+        }
+        detail = getattr(err, "description", None) if code in (400, 403) else None
+        if code == 500:
+            db.session.rollback()
+        return render_template("error.html", code=code, message=messages.get(code, "Error"), detail=detail), code
+
     return app
 
 
@@ -214,6 +235,13 @@ def _register_security(app):
         resp.headers.setdefault("X-Content-Type-Options", "nosniff")
         resp.headers.setdefault("X-Frame-Options", "DENY")
         resp.headers.setdefault("Referrer-Policy", "same-origin")
+        # Everything is served from this origin; inline scripts carry page data and confirm() prompts.
+        resp.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; "
+            "frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+        )
         if app.config.get("PRODUCTION"):
             resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
         if g.get("user") is not None:
