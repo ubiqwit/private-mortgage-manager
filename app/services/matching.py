@@ -69,7 +69,7 @@ def score(bank: BankTransaction, m: Mortgage, prime=None) -> Suggestion | None:
 
     # --- who paid -------------------------------------------------------
     padded = f" {desc} "
-    keyword_hit = next((k for k in m.keywords if normalise(k) and f" {normalise(k)} " in padded), None)
+    keyword_hit = next((k for k in m.keywords if is_identifying(normalise(k)) and f" {normalise(k)} " in padded), None)
     if keyword_hit:
         pts += 55
         reasons.append(f"description contains “{keyword_hit}”")
@@ -153,11 +153,16 @@ def suggestions(bank: BankTransaction, mortgages=None, prime=None, limit=3) -> l
     return out[:limit]
 
 
+def is_identifying(text: str) -> bool:
+    """True if ``text`` has at least one word that could identify a payer."""
+    return any(len(t) >= 3 and t.lower().strip(".,'-") not in STOPWORDS for t in (text or "").split())
+
+
 def learn_keyword(m: Mortgage, description: str):
     """Remember the stable part of a bank description for future matches."""
     key = normalise(description)
     # Generic lines ("MOBILE CHEQUE DEPOSIT") would match everyone — only learn identifying text.
-    if not key or not any(t.lower() not in STOPWORDS and len(t) >= 3 for t in key.split()):
+    if not is_identifying(key):
         return
     existing = [normalise(k) for k in m.keywords]
     if key in existing:

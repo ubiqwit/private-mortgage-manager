@@ -108,3 +108,54 @@ def test_edit(client):
     assert resp.status_code == 302
     assert db.session.get(Mortgage, m.id).interest_rate == Decimal("11")
     assert client.get(f"/mortgages/{m.id}/edit").status_code == 200
+
+
+def test_renewal_keeps_past_terms(client):
+    from app.services import reports
+
+    m = create(client, record_lender_fee="", renewal_fee="1000")  # 10% to Jan 1 2027, $1,666.67/mo
+    resp = client.post(f"/mortgages/{m.id}/renew", data={
+        "effective_date": "2027-01-01", "rate_type": "fixed", "interest_rate": "12", "term_months": "12",
+        "renewal_fee": "1000", "record_fee": "1",
+    })
+    assert resp.status_code == 302
+    m = db.session.get(Mortgage, m.id)
+    assert m.maturity_date == date(2028, 1, 1) and m.term_months == 12
+    assert len(m.term_history) == 1 and m.term_history[0].valid_until == date(2026, 12, 31)
+    # Old rate before the renewal, new rate after.
+    assert m.effective_rate(on=date(2026, 12, 15)) == Decimal("10")
+    assert m.effective_rate(on=date(2027, 1, 15)) == Decimal("12")
+    assert m.scheduled_payment(date(2027, 1, 1)) == Decimal("1666.67")  # pays December, at 10%
+    assert m.scheduled_payment(date(2027, 2, 1)) == Decimal("2000.00")  # pays January, at 12%
+    # December's accrual is unchanged by the renewal; the fee is January income.
+    assert reports.month_end_report(2026, 12)["rows"][0]["accrued"] == Decimal("1666.67")
+    jan = reports.month_end_report(2027, 1)["rows"][0]
+    assert jan["accrued"] == Decimal("2000.00") and jan["fees"] == Decimal("1000.00")
+    assert "renewed" in m.notes
+    assert client.get(f"/mortgages/{m.id}").status_code == 200
+
+    # Undo restores the previous terms.
+    client.post(f"/mortgages/{m.id}/renew/undo")
+    m = db.session.get(Mortgage, m.id)
+    assert m.term_history == [] and m.interest_rate == Decimal("10") and m.maturity_date == date(2027, 1, 1)
+
+
+def test_renewal_validation(client):
+    m = create(client, record_lender_fee="")
+    client.post(f"/mortgages/{m.id}/renew", data={"effective_date": "2025-06-01", "interest_rate": "12", "term_months": "12"})
+    assert db.session.get(Mortgage, m.id).term_history == []
+
+
+def test_variable_history_uses_prime_on_the_day(client):
+    from app.models import MarketObservation
+    from app.services import market
+
+    db.session.add_all([
+        MarketObservation(series="V80691311", date=date(2026, 1, 1), value=Decimal("5.20")),
+        MarketObservation(series="V80691311", date=date(2026, 6, 15), value=Decimal("4.95")),
+    ])
+    db.session.commit()
+    market.clear_cache()
+    m = create(client, rate_type="variable", prime_spread="5", record_lender_fee="")
+    assert m.effective_rate(on=date(2026, 3, 1)) == Decimal("10.20")
+    assert m.effective_rate(on=date(2026, 7, 1)) == Decimal("9.95")

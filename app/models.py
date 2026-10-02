@@ -121,6 +121,12 @@ class Mortgage(TimestampMixin, db.Model):
         cascade="all, delete-orphan",
         order_by="MortgageTransaction.date",
     )
+    term_history = db.relationship(
+        "TermHistory",
+        back_populates="mortgage",
+        cascade="all, delete-orphan",
+        order_by="TermHistory.valid_until",
+    )
 
     # ----- labels -------------------------------------------------------
     @property
@@ -159,38 +165,48 @@ class Mortgage(TimestampMixin, db.Model):
         return [k.strip() for k in (self.match_keywords or "").splitlines() if k.strip()]
 
     # ----- rates & payments --------------------------------------------
-    def effective_rate(self, prime=None) -> Decimal:
-        """Current annual rate. Variable loans follow prime + spread (subject to floor)."""
-        if self.rate_type == "variable" and prime is not None and self.prime_spread is not None:
-            rate = Decimal(str(prime)) + Decimal(str(self.prime_spread))
-            if self.rate_floor is not None:
-                rate = max(rate, Decimal(str(self.rate_floor)))
-            return rate
-        return Decimal(str(self.interest_rate))
+    def terms_on(self, day: date):
+        """The terms (rate, payment…) in force on ``day``: a :class:`TermHistory` row for
+        days before a renewal/rate change, otherwise the mortgage's current fields."""
+        for h in self.term_history:  # ordered by valid_until
+            if day <= h.valid_until:
+                return h
+        return self
+
+    def effective_rate(self, prime=None, on: date | None = None) -> Decimal:
+        """Annual rate on ``on`` (default today). Variable loans follow prime + spread,
+        subject to the floor — using prime as it was on that day when ``on`` is given."""
+        terms = self.terms_on(on or local_today())
+        if terms.rate_type == "variable" and terms.prime_spread is not None:
+            if on is not None:
+                from .services.market import prime_on
+
+                prime = prime_on(on) if prime_on(on) is not None else prime
+            if prime is not None:
+                rate = Decimal(str(prime)) + Decimal(str(terms.prime_spread))
+                if terms.rate_floor is not None:
+                    rate = max(rate, Decimal(str(terms.rate_floor)))
+                return rate
+        return Decimal(str(terms.interest_rate))
+
+    def _payment(self, terms, rate, balance) -> Decimal:
+        if terms.payment_amount:
+            return calc.money(terms.payment_amount)
+        if terms.payment_type == "amortizing" and terms.amortization_months:
+            return calc.blended_payment(
+                self.principal_amount, rate, terms.compounding, self.payment_frequency, terms.amortization_months
+            )
+        return calc.interest_only_payment(balance, rate, terms.compounding, self.payment_frequency)
 
     def regular_payment(self, prime=None) -> Decimal:
-        if self.payment_amount:
-            return calc.money(self.payment_amount)
-        rate = self.effective_rate(prime)
-        if self.payment_type == "amortizing" and self.amortization_months:
-            return calc.blended_payment(
-                self.principal_amount, rate, self.compounding, self.payment_frequency, self.amortization_months
-            )
-        return calc.interest_only_payment(self.balance(), rate, self.compounding, self.payment_frequency)
+        """The payment under today's terms (interest-only: on today's balance)."""
+        return self._payment(self.terms_on(local_today()), self.effective_rate(prime), self.balance())
 
     def scheduled_payment(self, due: date, prime=None) -> Decimal:
-        """Payment owed on ``due``. Interest-only payments follow the balance outstanding
-        just before that date, so past dues stay correct after a prepayment."""
-        if self.payment_amount:
-            return calc.money(self.payment_amount)
-        rate = self.effective_rate(prime)
-        if self.payment_type == "amortizing" and self.amortization_months:
-            return calc.blended_payment(
-                self.principal_amount, rate, self.compounding, self.payment_frequency, self.amortization_months
-            )
-        return calc.interest_only_payment(
-            self.balance(as_of=due - timedelta(days=1)), rate, self.compounding, self.payment_frequency
-        )
+        """Payment owed on ``due``, under the terms and balance of the period it pays for —
+        so past dues stay correct after a prepayment, renewal or prime change."""
+        day = due - timedelta(days=1)
+        return self._payment(self.terms_on(day), self.effective_rate(prime, on=day), self.balance(as_of=day))
 
     def scheduled_total(self, start=None, end=None, prime=None) -> Decimal:
         """Sum of scheduled payments due in the window, skipping dates on/after a payout."""
@@ -304,6 +320,40 @@ class MortgageTransaction(TimestampMixin, db.Model):
         """Cash in (+) / out (-) from the lender's point of view."""
         amt = Decimal(str(self.amount))
         return -amt if self.type in ("advance", "nsf", "funding") else amt
+
+
+class TermHistory(db.Model):
+    """Terms that applied up to and including ``valid_until``. Written when a mortgage is
+    renewed or its rate changes, so earlier periods keep their original rate and payment."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    mortgage_id = db.Column(db.Integer, db.ForeignKey("mortgage.id"), nullable=False, index=True)
+    valid_until = db.Column(db.Date, nullable=False)
+    rate_type = db.Column(db.String(20), nullable=False)
+    interest_rate = db.Column(db.Numeric(7, 4), nullable=False)
+    prime_spread = db.Column(db.Numeric(7, 4))
+    rate_floor = db.Column(db.Numeric(7, 4))
+    compounding = db.Column(db.String(20), nullable=False)
+    payment_type = db.Column(db.String(20), nullable=False)
+    payment_amount = db.Column(db.Numeric(14, 2))
+    amortization_months = db.Column(db.Integer)
+    maturity_date = db.Column(db.Date, nullable=False)  # maturity before the change
+    note = db.Column(db.String(500))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    mortgage = db.relationship("Mortgage", back_populates="term_history")
+
+    TERM_FIELDS = ("rate_type", "interest_rate", "prime_spread", "rate_floor", "compounding", "payment_type",
+                   "payment_amount", "amortization_months", "maturity_date")
+
+    @classmethod
+    def snapshot(cls, m: "Mortgage", valid_until: date, note: str | None = None) -> "TermHistory":
+        return cls(mortgage=m, valid_until=valid_until, note=note,
+                   **{f: getattr(m, f) for f in cls.TERM_FIELDS})
+
+    def restore_to(self, m: "Mortgage"):
+        for f in self.TERM_FIELDS:
+            setattr(m, f, getattr(self, f))
 
 
 class StatementImport(db.Model):

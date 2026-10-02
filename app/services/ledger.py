@@ -11,8 +11,10 @@ ZERO = Decimal("0.00")
 
 def period_interest(mortgage, on: date, prime=None) -> Decimal:
     """Interest for one payment period on the balance outstanding just before ``on``."""
-    balance = mortgage.balance(as_of=on - timedelta(days=1))
-    rate = calc.periodic_rate(mortgage.effective_rate(prime), mortgage.compounding, mortgage.payment_frequency)
+    day = on - timedelta(days=1)
+    balance = mortgage.balance(as_of=day)
+    terms = mortgage.terms_on(day)
+    rate = calc.periodic_rate(mortgage.effective_rate(prime, on=day), terms.compounding, mortgage.payment_frequency)
     return calc.money(balance * rate)
 
 

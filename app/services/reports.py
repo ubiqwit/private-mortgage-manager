@@ -37,7 +37,6 @@ def accrued_interest(m: Mortgage, start: date, end: date, prime=None) -> Decimal
     """
     if end < m.funded_date:
         return ZERO
-    monthly = calc.periodic_rate(m.effective_rate(prime), m.compounding, "monthly")
     total = Decimal(0)
     day = max(start, m.funded_date)
     while day <= end:
@@ -47,6 +46,7 @@ def accrued_interest(m: Mortgage, start: date, end: date, prime=None) -> Decimal
             bal = m.balance(as_of=day - timedelta(days=1))
             if bal <= 0:
                 break
+            monthly = calc.periodic_rate(m.effective_rate(prime, on=day), m.terms_on(day).compounding, "monthly")
             total += bal * monthly / days_in_month
         day += timedelta(days=1)
     return calc.money(total)
@@ -85,7 +85,7 @@ def month_end_report(year: int, month: int, prime=None) -> dict:
         share = Decimal(str(m.ownership_pct or 100)) / 100
         accrued = accrued_interest(m, start, end, prime)
         rows.append(dict(
-            m=m, opening=opening, closing=closing, rate=m.effective_rate(prime),
+            m=m, opening=opening, closing=closing, rate=m.effective_rate(prime, on=end),
             advances=calc.money(inc["advances"]), principal=calc.money(inc["principal"]),
             interest=calc.money(inc["interest"]), fees=calc.money(inc["fees"]), received=calc.money(inc["received"]),
             income=calc.money(inc["interest"] + inc["fees"]),

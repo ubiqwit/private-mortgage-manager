@@ -1,5 +1,5 @@
 """Mortgage book: list, create/edit, detail, schedule and manual transactions."""
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
 from dateutil.relativedelta import relativedelta
@@ -13,6 +13,7 @@ from ..models import (
     TXN_TYPES,
     Mortgage,
     MortgageTransaction,
+    TermHistory,
     audit,
     next_reference,
 )
@@ -336,4 +337,81 @@ def delete_transaction(txn_id):
         bank.status = "matched" if matching.remaining(bank) <= 0 else "unmatched"
     db.session.commit()
     flash("Transaction removed." + (" The bank line is back in the unmatched queue." if bank else ""), "success")
+    return redirect(url_for("mortgages.detail", mortgage_id=m.id))
+
+
+@bp.route("/<int:mortgage_id>/renew", methods=["POST"])
+def renew(mortgage_id):
+    """Renew / change terms from an effective date. Earlier periods keep their old terms."""
+    m = db.get_or_404(Mortgage, mortgage_id)
+    f = request.form
+    try:
+        effective = parse_date(f.get("effective_date"), "Effective date") or m.maturity_date
+        last_change = m.term_history[-1].valid_until if m.term_history else m.funded_date
+        if effective <= last_change:
+            raise FormError(f"The effective date must be after {last_change:%b %d, %Y}")
+        rate_type = f.get("rate_type", m.rate_type)
+        interest_rate = parse_decimal(f.get("interest_rate"), "Interest rate")
+        prime_spread = parse_decimal(f.get("prime_spread"), "Spread over prime")
+        if interest_rate is None:
+            raise FormError("Enter the new interest rate")
+        if rate_type == "variable" and prime_spread is None:
+            raise FormError("Variable-rate terms need a spread over prime")
+        new_maturity = parse_date(f.get("maturity_date"), "New maturity date")
+        term = parse_decimal(f.get("term_months"), "Term")
+        if new_maturity is None:
+            if not term:
+                raise FormError("Enter a new maturity date or a term in months")
+            new_maturity = effective + relativedelta(months=int(term))
+        if new_maturity <= effective:
+            raise FormError("The new maturity date must be after the effective date")
+        fee = parse_decimal(f.get("renewal_fee"), "Renewal fee")
+        payment_amount = parse_decimal(f.get("payment_amount"), "Payment amount")
+    except FormError as exc:
+        flash(str(exc), "danger")
+        return redirect(url_for("mortgages.detail", mortgage_id=m.id))
+
+    old = f"{m.effective_rate(latest_prime()):.2f}% to {m.maturity_date:%b %d, %Y}"
+    db.session.add(TermHistory.snapshot(m, effective - timedelta(days=1), note=(f.get("note") or "").strip() or None))
+    m.rate_type = rate_type
+    m.interest_rate = interest_rate
+    m.prime_spread = prime_spread if rate_type == "variable" else None
+    m.rate_floor = parse_decimal(f.get("rate_floor"), "Rate floor") if rate_type == "variable" else None
+    m.payment_amount = payment_amount
+    m.maturity_date = new_maturity
+    m.term_months = calc.months_between(effective, new_maturity)
+    if m.status == "matured":
+        m.status = "active"
+    if fee:
+        m.renewal_fee = fee
+        if f.get("record_fee"):
+            db.session.add(MortgageTransaction(mortgage=m, date=effective, type="fee", amount=calc.money(fee),
+                                               fees=calc.money(fee), interest=0, principal=0, notes="Renewal fee"))
+    line = (f"{local_today():%Y-%m-%d}: renewed from {effective:%b %d, %Y} — was {old}; now "
+            f"{m.effective_rate(latest_prime(), on=effective):.2f}% to {new_maturity:%b %d, %Y}")
+    m.notes = ((m.notes or "").rstrip() + "\n" + line).strip()
+    audit("mortgage_renewed", f"{m.reference}: {line}")
+    db.session.commit()
+    flash(f"{m.reference} renewed. Periods before {effective:%b %d, %Y} keep the old terms.", "success")
+    return redirect(url_for("mortgages.detail", mortgage_id=m.id))
+
+
+@bp.route("/<int:mortgage_id>/renew/undo", methods=["POST"])
+def undo_renewal(mortgage_id):
+    m = db.get_or_404(Mortgage, mortgage_id)
+    if not m.term_history:
+        flash("There is no renewal to undo.", "warning")
+        return redirect(url_for("mortgages.detail", mortgage_id=m.id))
+    last = m.term_history[-1]
+    last.restore_to(m)
+    m.term_months = calc.months_between(
+        m.term_history[-2].valid_until + timedelta(days=1) if len(m.term_history) > 1 else m.funded_date,
+        m.maturity_date,
+    )
+    m.term_history.remove(last)
+    db.session.delete(last)
+    audit("mortgage_renewal_undone", f"{m.reference}: restored terms valid until {last.valid_until}")
+    db.session.commit()
+    flash("Last renewal undone — previous terms restored. (A renewal fee recorded with it was left in place; "
+          "remove it from the transactions if needed.)", "info")
     return redirect(url_for("mortgages.detail", mortgage_id=m.id))

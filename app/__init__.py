@@ -80,10 +80,7 @@ def create_app(test_config=None):
         if app.config.get("TESTING"):
             db.create_all()
         elif app.config.get("AUTO_MIGRATE", True):
-            # Bring the schema up to date on start-up (new installs and upgrades alike).
-            from flask_migrate import upgrade
-
-            upgrade(directory=MIGRATIONS_DIR)
+            _upgrade_schema(app)
         models.bootstrap_admin_from_env()
         # Don't share pooled connections with forked gunicorn workers (--preload).
         db.engine.dispose()
@@ -104,6 +101,25 @@ def create_app(test_config=None):
         return {"status": "ok"}
 
     return app
+
+
+BASELINE_REVISION = "b33d016bc6db"  # the schema as it was when migrations were introduced
+
+
+def _upgrade_schema(app):
+    """Bring the schema up to date on start-up (new installs and upgrades alike)."""
+    from alembic.migration import MigrationContext
+    from flask_migrate import stamp, upgrade
+    from sqlalchemy import inspect
+
+    tables = set(inspect(db.engine).get_table_names()) - {"alembic_version"}
+    with db.engine.connect() as conn:
+        current = MigrationContext.configure(conn).get_current_revision()
+    if tables and current is None:
+        # Created by an early version with create_all(): adopt it at the baseline, then upgrade.
+        app.logger.warning("Database has no migration history; stamping baseline %s", BASELINE_REVISION)
+        stamp(directory=MIGRATIONS_DIR, revision=BASELINE_REVISION)
+    upgrade(directory=MIGRATIONS_DIR)
 
 
 def _dev_secret(instance_path):

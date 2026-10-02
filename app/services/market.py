@@ -77,6 +77,36 @@ def latest_prime():
     return obs.value if obs else None
 
 
+def _prime_history():
+    """Sorted (dates, values) for prime, cached for the current app context."""
+    from flask import g, has_app_context
+
+    if has_app_context() and "_prime_history" in g:
+        return g._prime_history
+    rows = (db.session.query(MarketObservation.date, MarketObservation.value)
+            .filter(MarketObservation.series == PRIME_SERIES).order_by(MarketObservation.date).all())
+    hist = ([d for d, _ in rows], [Decimal(str(v)) for _, v in rows])
+    if has_app_context():
+        g._prime_history = hist
+    return hist
+
+
+def clear_cache():
+    from flask import g, has_app_context
+
+    if has_app_context():
+        g.pop("_prime_history", None)
+
+
+def prime_on(day: date):
+    """Prime in effect on ``day`` (the latest observation on or before it), or None."""
+    from bisect import bisect_right
+
+    dates, values = _prime_history()
+    i = bisect_right(dates, day) - 1
+    return values[i] if i >= 0 else None
+
+
 def history(series: str, since: date):
     return (MarketObservation.query.filter(MarketObservation.series == series, MarketObservation.date >= since)
             .order_by(MarketObservation.date).all())
@@ -175,6 +205,7 @@ def parse_valet(payload: dict, series: str):
 def store_observations(series: str, points, source="boc") -> int:
     if not points:
         return 0
+    clear_cache()
     start = min(d for d, _ in points)
     existing = {o.date: o for o in MarketObservation.query.filter(MarketObservation.series == series,
                                                                   MarketObservation.date >= start)}

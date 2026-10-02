@@ -29,7 +29,7 @@
   <div class="col-6 col-lg-2">
     <div class="card stat-card h-100 p-3">
       <div class="stat-label">{{ label }}</div>
-      <div class="stat-value {% if label == 'Arrears' and s.arrears > 0 %}text-danger{% endif %}" style="font-size:1.25rem">{{ value }}</div>
+      <div class="stat-value stat-value-sm {% if label == 'Arrears' and s.arrears > 0 %}text-danger{% endif %}">{{ value }}</div>
       <div class="stat-sub">{{ sub }}</div>
     </div>
   </div>
@@ -51,6 +51,23 @@
         {{ row('Prepayment', m.prepayment_terms) }}
       </table>
     </div>
+    {% if m.term_history %}
+    <div class="card mb-3"><div class="card-header bg-white fw-semibold">Rate &amp; term history</div>
+      <table class="table table-sm mb-0 small">
+        <thead class="table-light"><tr><th>Until</th><th>Rate</th><th class="num">Payment</th><th>Maturity was</th></tr></thead>
+        <tbody>
+        {% for h in m.term_history %}
+          <tr title="{{ h.note or '' }}"><td class="text-nowrap">{{ h.valid_until|d }}</td>
+            <td>{{ ('Prime + ' ~ (h.prime_spread|pct)) if h.rate_type == 'variable' else (h.interest_rate|pct) }}</td>
+            <td class="num">{{ h.payment_amount|money if h.payment_amount else 'calculated' }}</td>
+            <td class="text-nowrap">{{ h.maturity_date|d }}</td></tr>
+        {% endfor %}
+          <tr class="fw-semibold"><td>Current</td><td>{{ ('Prime + ' ~ (m.prime_spread|pct)) if m.rate_type == 'variable' else (m.interest_rate|pct) }}</td>
+            <td class="num">{{ m.payment_amount|money if m.payment_amount else 'calculated' }}</td><td class="text-nowrap">{{ m.maturity_date|d }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
     <div class="card mb-3"><div class="card-header bg-white fw-semibold">Security</div>
       <table class="table table-sm mb-0">
         {{ row('Property type', m.property_type_label) }}
@@ -121,6 +138,47 @@
     </div>
     {% endif %}
 
+    {% if current_user.can_edit %}
+    <details class="card mb-3" {% if s.days_to_maturity <= 60 %}open{% endif %}>
+      <summary class="card-header bg-white fw-semibold">Renew / change terms
+        {% if s.days_to_maturity < 0 %}<span class="badge text-bg-danger ms-1">matured</span>{% elif s.days_to_maturity <= 60 %}<span class="badge text-bg-warning ms-1">matures in {{ s.days_to_maturity }} days</span>{% endif %}</summary>
+      <form method="post" action="{{ url_for('mortgages.renew', mortgage_id=m.id) }}" class="card-body row g-2 align-items-end">
+        {{ csrf_field() }}
+        <div class="col-md-3"><label class="form-label small mb-1">New terms start</label>
+          <input type="date" name="effective_date" class="form-control form-control-sm" value="{{ m.maturity_date.isoformat() }}" required></div>
+        <div class="col-md-3"><label class="form-label small mb-1">Rate type</label>
+          <select name="rate_type" class="form-select form-select-sm">
+            <option value="fixed" {% if m.rate_type == 'fixed' %}selected{% endif %}>Fixed</option>
+            <option value="variable" {% if m.rate_type == 'variable' %}selected{% endif %}>Variable (prime +)</option></select></div>
+        <div class="col-md-2"><label class="form-label small mb-1">Rate %</label>
+          <input type="number" step="0.0001" name="interest_rate" class="form-control form-control-sm" value="{{ m.interest_rate }}" required></div>
+        <div class="col-md-2"><label class="form-label small mb-1">Prime + %</label>
+          <input type="number" step="0.0001" name="prime_spread" class="form-control form-control-sm" value="{{ m.prime_spread if m.prime_spread is not none else '' }}"></div>
+        <div class="col-md-2"><label class="form-label small mb-1">Floor %</label>
+          <input type="number" step="0.0001" name="rate_floor" class="form-control form-control-sm" value="{{ m.rate_floor if m.rate_floor is not none else '' }}"></div>
+        <div class="col-md-3"><label class="form-label small mb-1">Term (months)</label>
+          <input type="number" name="term_months" class="form-control form-control-sm" value="{{ m.term_months or 12 }}"></div>
+        <div class="col-md-3"><label class="form-label small mb-1">or new maturity date</label>
+          <input type="date" name="maturity_date" class="form-control form-control-sm"></div>
+        <div class="col-md-3"><label class="form-label small mb-1">Payment ($, blank = calculate)</label>
+          <input type="number" step="0.01" name="payment_amount" class="form-control form-control-sm" value="{{ m.payment_amount or '' }}"></div>
+        <div class="col-md-3"><label class="form-label small mb-1">Renewal fee ($)</label>
+          <input type="number" step="0.01" name="renewal_fee" class="form-control form-control-sm" value="{{ m.renewal_fee or '' }}"></div>
+        <div class="col-md-6"><input name="note" class="form-control form-control-sm" placeholder="Note (optional), e.g. renewal letter signed Oct 2"></div>
+        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="record_fee" value="1" id="rf" checked>
+          <label class="form-check-label small" for="rf">Record the fee as income on the start date</label></div></div>
+        <div class="col-md-2 text-end"><button class="btn btn-sm btn-primary">Renew</button></div>
+        <div class="col-12 form-text">Periods before the start date keep the old rate and payment, so past reports don't change.
+          To fix a typo in the current terms instead, use Edit.</div>
+      </form>
+      {% if m.term_history %}
+      <form method="post" action="{{ url_for('mortgages.undo_renewal', mortgage_id=m.id) }}" class="px-3 pb-3"
+            onsubmit="return confirm('Undo the last renewal and restore the previous terms?')">{{ csrf_field() }}
+        <button class="btn btn-link btn-sm p-0 text-danger">Undo last renewal</button></form>
+      {% endif %}
+    </details>
+    {% endif %}
+
     <div class="card">
       <div class="card-header bg-white fw-semibold">Transactions</div>
       <div class="table-responsive">
@@ -130,7 +188,7 @@
         <tbody>
         {% for t in transactions %}
           <tr>
-            <td class="text-nowrap">{{ t.date|d }}</td><td>{{ t.type_label }}</td>
+            <td class="text-nowrap">{{ t.date|d }}</td><td class="text-nowrap">{{ t.type_label }}</td>
             <td class="num {% if t.signed_amount < 0 %}text-danger{% endif %}">{{ t.signed_amount|money }}</td>
             <td class="num">{{ t.interest|money }}</td><td class="num">{{ t.principal|money }}</td><td class="num">{{ t.fees|money }}</td>
             <td class="small">{% if t.bank_transaction %}<i class="bi bi-bank" title="Matched to bank statement"></i> {{ t.bank_transaction.description }}{% endif %}

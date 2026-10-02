@@ -141,3 +141,9 @@ def test_links_manually_recorded_payment_instead_of_duplicating(client):
     m = db.session.get(Mortgage, m.id)
     assert len([t for t in m.transactions if t.type == "payment"]) == 1
     assert m.transactions[0].bank_transaction_id is None
+
+
+def test_generic_keywords_never_match():
+    assert not matching.is_identifying("INC.")
+    assert not matching.is_identifying("MOBILE CHEQUE DEPOSIT")
+    assert matching.is_identifying("E-TRANSFER NORTHGATE")

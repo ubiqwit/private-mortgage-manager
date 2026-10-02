@@ -68,6 +68,7 @@ def _seed_demo(today=None):
 
     from .models import Mortgage, MortgageTransaction
     from .services import ledger
+    from .services.matching import name_tokens
 
     today = today or local_today()
     rnd = random.Random(42)
@@ -96,7 +97,7 @@ def _seed_demo(today=None):
             broker_name=rnd.choice(["Mortgage Alliance", "Dominion Lending", "Private broker"]),
             broker_fee=Decimal(principal) * Decimal("0.01"), appraisal_date=funded - relativedelta(weeks=3),
             insurance_expiry=today + relativedelta(days=[12, 140, 200, 300, 75, 260, 330, 190][i - 1]),
-            status="active", match_keywords=f"{name.split()[-1].upper()}\nE-TRANSFER {name.split()[0].upper()}",
+            status="active", match_keywords="\n".join(name_tokens(name)[-1:] + [f"E-TRANSFER {name.split()[0].upper()}"]),
         )
         db.session.add(m)
         db.session.add(MortgageTransaction(mortgage=m, date=funded, type="fee", amount=m.lender_fee,
