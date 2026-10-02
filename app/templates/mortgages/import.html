@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Import mortgages{% endblock %}
+{% block content %}
+<a href="{{ url_for('mortgages.index') }}" class="small text-decoration-none"><i class="bi bi-arrow-left"></i> Mortgages</a>
+<h1 class="h3">Import mortgages from a spreadsheet</h1>
+<p class="text-secondary" style="max-width:780px">Load your existing book in one go. Download the template, fill in one row per mortgage
+  (red headers are required; hover a header in Excel for help), and upload it as Excel or CSV. If any row has a problem,
+  nothing is imported and you'll see exactly what to fix.</p>
+
+{% if errors %}
+<div class="alert alert-danger">
+  <strong>Nothing was imported — {{ errors|length }} of {{ row_count }} row(s) need fixing:</strong>
+  <ul class="mb-0 mt-2">{% for n, name, msg in errors %}<li>Row {{ n }} ({{ name }}): {{ msg }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="card p-4">
+      <h2 class="h6">1. Get the template</h2>
+      <a class="btn btn-outline-success mb-4" href="{{ url_for('mortgages.import_template') }}"><i class="bi bi-file-earmark-excel"></i> Download template (.xlsx)</a>
+      <h2 class="h6">2. Upload it</h2>
+      <form method="post" enctype="multipart/form-data">{{ csrf_field() }}
+        <input type="file" name="file" class="form-control mb-3" accept=".xlsx,.csv" required>
+        <button class="btn btn-primary"><i class="bi bi-upload"></i> Import</button>
+      </form>
+      <p class="small text-secondary mt-3 mb-0">Tip: if principal has already been partly repaid, fill in <em>Current balance</em>
+        (and <em>Balance as of</em>) — an opening-balance adjustment is recorded so balances are right from day one.
+        Add past payments afterwards, or start reconciling from your next bank statement.</p>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header bg-white fw-semibold">Columns</div>
+      <div class="table-responsive" style="max-height:480px">
+      <table class="table table-sm mb-0 small">
+        {% for header, field, help in columns %}<tr><td class="text-nowrap fw-semibold">{{ header }}</td><td>{{ help }}</td></tr>{% endfor %}
+      </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

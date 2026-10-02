@@ -465,3 +465,87 @@ def edit_transaction(txn_id):
         flash("Transaction updated.", "success")
         return redirect(url_for("mortgages.detail", mortgage_id=m.id))
     return render_template("mortgages/transaction_form.html", t=txn, m=m, txn_types=TXN_TYPES)
+
+
+@bp.route("/import", methods=["GET", "POST"])
+def import_book():
+    """Load many mortgages at once from the spreadsheet template (all-or-nothing)."""
+    from ..services import importer
+    from ..services.statements import StatementError
+
+    if request.method == "GET":
+        return render_template("mortgages/import.html", columns=importer.COLUMNS, errors=None)
+    f = request.files.get("file")
+    if not f or not f.filename:
+        flash("Choose the filled-in spreadsheet to upload.", "warning")
+        return redirect(url_for("mortgages.import_book"))
+    try:
+        rows = importer.parse_rows(f.filename, f.read())
+    except StatementError as exc:
+        flash(str(exc), "danger")
+        return redirect(url_for("mortgages.import_book"))
+    if not rows:
+        flash("No mortgages found in that file.", "warning")
+        return redirect(url_for("mortgages.import_book"))
+
+    errors, created, refs = [], [], set()
+    taken = {r for (r,) in db.session.query(Mortgage.reference)}
+    with db.session.no_autoflush:
+        for n, form in rows:
+            m = Mortgage(status="active", rate_type="fixed", compounding="monthly", payment_type="interest_only",
+                         payment_frequency="monthly", position=1, property_province="ON", property_type="detached",
+                         ownership_pct=Decimal(100))
+            try:
+                if form.get("reference") and (form["reference"] in taken or form["reference"] in refs):
+                    raise FormError(f"Reference {form['reference']} already exists")
+                apply_form(m, {k: v for k, v in form.items() if not k.startswith("_")})
+                if not form.get("reference"):
+                    m.reference = None  # assigned after validation, so generated refs don't collide
+                adjustment = importer.balance_adjustment(form)
+            except (FormError, ValueError) as exc:
+                errors.append((n, form.get("borrower_name") or "?", str(exc)))
+                continue
+            refs.add(m.reference)
+            created.append((m, adjustment))
+    if errors:
+        db.session.rollback()
+        return render_template("mortgages/import.html", columns=importer.COLUMNS, errors=errors, row_count=len(rows)), 400
+
+    for m, adjustment in created:
+        if not m.reference:
+            m.reference = next_reference_excluding(refs)
+            refs.add(m.reference)
+        db.session.add(m)
+        if adjustment:
+            as_of, balance = adjustment
+            repaid = calc.money(m.principal_amount) - balance
+            if repaid > 0:
+                db.session.add(MortgageTransaction(
+                    mortgage=m, date=as_of or local_today(), type="adjustment", amount=repaid, interest=0,
+                    principal=repaid, fees=0, notes="Opening balance carried forward (principal repaid before import)",
+                ))
+        db.session.flush()
+    audit("mortgages_imported", f"{len(created)} from {f.filename}")
+    db.session.commit()
+    flash(f"Imported {len(created)} mortgage(s).", "success")
+    return redirect(url_for("mortgages.index", status="all"))
+
+
+@bp.route("/import/template.xlsx")
+def import_template():
+    from flask import Response
+
+    from ..services import importer
+
+    return Response(importer.template_workbook(),
+                    mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": 'attachment; filename="mortgage-import-template.xlsx"'})
+
+
+def next_reference_excluding(extra):
+    ref = next_reference()
+    n = int(ref.split("-")[1])
+    while ref in extra or db.session.query(Mortgage.id).filter_by(reference=ref).first():
+        n += 1
+        ref = f"M-{n:03d}"
+    return ref

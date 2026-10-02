@@ -1,7 +1,7 @@
 """Sign-in, password changes and user management."""
 from datetime import datetime, timedelta
 
-from flask import Blueprint, abort, flash, g, redirect, render_template, request, session, url_for
+from flask import Blueprint, Response, abort, flash, g, redirect, render_template, request, session, url_for
 
 from .. import db
 from ..models import ROLES, AuditLog, User, audit
@@ -132,3 +132,16 @@ def update_user(user_id):
     db.session.commit()
     flash(f"Updated {user.email}.", "success")
     return redirect(url_for("auth.users"))
+
+
+@bp.route("/export/all.xlsx")
+def export_all():
+    """Admin-only full backup of the data as an Excel workbook."""
+    _require_admin()
+    from ..services.backup import export_workbook
+    from ..timeutil import today
+
+    audit("data_exported", "full workbook")
+    db.session.commit()
+    return Response(export_workbook(), mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f'attachment; filename="mortgage-manager-export-{today():%Y-%m-%d}.xlsx"'})

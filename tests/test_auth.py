@@ -56,3 +56,22 @@ def test_admin_creates_user(app, client):
 def test_csrf_enforced(app, client):
     app.config["WTF_CSRF_ENABLED"] = True
     assert client.post("/users/new", data={"email": "a@b.co", "password": "x" * 12}).status_code == 400
+
+
+def test_full_export(app, client):
+    import io
+
+    from openpyxl import load_workbook
+
+    resp = client.get("/export/all.xlsx")
+    assert resp.status_code == 200
+    wb = load_workbook(io.BytesIO(resp.data))
+    assert "Mortgages" in wb.sheetnames and "Transactions" in wb.sheetnames
+    assert "password_hash" not in [c.value for c in wb["Users"][1]]
+
+
+def test_export_admin_only(app):
+    make_user("viewer@example.com", role="viewer")
+    c = app.test_client()
+    c.post("/login", data={"email": "viewer@example.com", "password": PASSWORD})
+    assert c.get("/export/all.xlsx").status_code == 403
