@@ -92,7 +92,13 @@ def create_app(test_config=None):
             db.create_all()
         elif app.config.get("AUTO_MIGRATE", True):
             _upgrade_schema(app)
-        models.bootstrap_admin_from_env()
+        try:
+            models.bootstrap_admin_from_env()
+        except ValueError as exc:
+            # A bad PMM_ADMIN_* setting shouldn't take the whole site down; say what to fix.
+            db.session.rollback()
+            app.logger.error("Could not create/reset the admin from PMM_ADMIN_EMAIL/PMM_ADMIN_PASSWORD: %s "
+                             "Fix the environment variable and redeploy.", exc)
         # Don't share pooled connections with forked gunicorn workers (--preload).
         db.engine.dispose()
 

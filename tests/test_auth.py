@@ -101,3 +101,16 @@ def test_admin_reset_from_environment(app, monkeypatch):
     bootstrap_admin_from_env()
     u = db.session.get(User, user.id)
     assert u.check_password("brand-new-password") and u.active and u.role == "admin"
+
+
+def test_short_bootstrap_password_does_not_crash(tmp_path, monkeypatch):
+    from app import create_app
+    from app.models import User
+
+    monkeypatch.setenv("PMM_ADMIN_EMAIL", "owner@example.com")
+    monkeypatch.setenv("PMM_ADMIN_PASSWORD", "short")
+    app = create_app({"TESTING": True, "SECRET_KEY": "t", "MARKET_FETCH_ENABLED": False,
+                      "SQLALCHEMY_DATABASE_URI": f"sqlite:///{tmp_path / 'x.db'}"})
+    with app.app_context():
+        assert User.query.count() == 0
+    assert app.test_client().get("/login").status_code == 200
