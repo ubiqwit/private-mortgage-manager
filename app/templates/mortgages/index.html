@@ -55,10 +55,10 @@
         <td class="num">{{ r.balance|money }}</td>
         <td class="num">{{ r.rate|pct }}{% if m.rate_type == 'variable' %} <span class="badge text-bg-info" title="Prime + {{ m.prime_spread }}">V</span>{% endif %}</td>
         <td class="num">{{ r.payment|money }} <span class="text-secondary small">{{ m.payment_frequency.replace('_',' ') }}</span></td>
-        <td class="num">{% if r.ltv and r.ltv > 80 %}<i class="bi bi-exclamation-octagon-fill status-critical" title="High combined LTV"></i> {% elif r.ltv and r.ltv > 75 %}<i class="bi bi-exclamation-triangle-fill status-warning" title="Elevated combined LTV"></i> {% endif %}{{ r.ltv|pct(1) }}</td>
+        <td class="num">{% if not m.is_open %}—{% elif r.ltv and r.ltv > 80 %}<i class="bi bi-exclamation-octagon-fill status-critical" title="High combined LTV"></i> {% elif r.ltv and r.ltv > 75 %}<i class="bi bi-exclamation-triangle-fill status-warning" title="Elevated combined LTV"></i> {% endif %}{{ r.ltv|pct(1) if m.is_open else '' }}</td>
         <td class="text-nowrap">{{ r.next_due|d }}</td>
         {% set dtm = m.days_to_maturity() %}
-        <td class="text-nowrap">{% if dtm < 0 %}<i class="bi bi-exclamation-octagon-fill status-critical" title="Past maturity"></i> {% elif dtm < 90 %}<i class="bi bi-exclamation-triangle-fill status-warning" title="Matures within 90 days"></i> {% endif %}{{ m.maturity_date|d }}</td>
+        <td class="text-nowrap">{% if not m.is_open %}{% elif dtm < 0 %}<i class="bi bi-exclamation-octagon-fill status-critical" title="Past maturity"></i> {% elif dtm < 90 %}<i class="bi bi-exclamation-triangle-fill status-warning" title="Matures within 90 days"></i> {% endif %}{{ m.maturity_date|d }}</td>
         <td class="num {% if r.arrears > 0 %}text-danger fw-semibold{% endif %}">{{ r.arrears|money if r.arrears > 0 else '—' }}</td>
         <td><span class="badge badge-status-{{ m.display_status }}">{{ m.display_status_label }}</span></td>
       </tr>

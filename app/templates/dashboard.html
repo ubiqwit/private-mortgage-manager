@@ -27,6 +27,13 @@
   {% endif %}
 </div>
 
+{% if demo_loaded %}
+<div class="alert alert-warning small d-flex gap-2 align-items-center"><i class="bi bi-cone-striped"></i>
+  <div>You're looking at <strong>demo data</strong> (mortgages <code>DEMO-01</code>…). Remove it under
+    {% if current_user.is_admin %}<a href="{{ url_for('auth.users') }}">Users &amp; data</a>{% else %}Users &amp; data (admin){% endif %} before adding your real mortgages.</div>
+</div>
+{% endif %}
+
 {% if policy_change %}
 <div class="alert alert-light border d-flex gap-2 align-items-start">
   <i class="bi {{ 'bi-arrow-down-circle-fill' if policy_change[3] < 0 else 'bi-arrow-up-circle-fill' }} fs-5"></i>

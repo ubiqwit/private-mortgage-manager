@@ -127,5 +127,9 @@ def register_seed(app):
             raise click.ClickException("The database already has mortgages; demo data is only loaded into an empty book.")
         if not yes:
             click.confirm("Load sample mortgages for trying the app out?", abort=True)
-        _seed_demo()
-        click.echo("Loaded demo mortgages.")
+        from .services.demo import load_demo
+        from .timeutil import today
+
+        n = load_demo(today())
+        db.session.commit()
+        click.echo(f"Loaded {n} demo mortgages.")

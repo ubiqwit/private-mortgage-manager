@@ -42,6 +42,21 @@
     </form>
   </div>
 </div>
+<div class="card p-3 mt-4" style="max-width:720px">
+  <h2 class="h6">Demo data</h2>
+  {% if demo_loaded %}
+    <p class="small text-secondary mb-2">Sample mortgages (references starting with <code>DEMO-</code>) are loaded. Remove them before entering your real book —
+      this deletes only the demo mortgages and everything recorded on them.</p>
+    <form method="post" action="{{ url_for('auth.remove_demo_data') }}" onsubmit="return confirm('Delete all DEMO- mortgages and their history?')">{{ csrf_field() }}
+      <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i> Remove demo data</button></form>
+  {% else %}
+    <p class="small text-secondary mb-2">Load 20 sample mortgages with five years of history (renewals, payouts, late payers, arrears,
+      a default, variable-rate and blended loans) to explore the app. They're clearly marked <code>DEMO-</code> and can be removed in one click.</p>
+    <form method="post" action="{{ url_for('auth.load_demo_data') }}">{{ csrf_field() }}
+      <button class="btn btn-sm btn-outline-primary"><i class="bi bi-magic"></i> Load demo data</button></form>
+  {% endif %}
+</div>
+
 <h2 class="h5 mt-4">Recent activity</h2>
 <div class="card"><table class="table table-sm mb-0">
   <thead><tr><th>When</th><th>User</th><th>Action</th><th>Detail</th><th>IP</th></tr></thead>

@@ -106,8 +106,11 @@ def _require_admin():
 @bp.route("/users")
 def users():
     _require_admin()
+    from ..services.demo import has_demo
+
     recent = AuditLog.query.order_by(AuditLog.at.desc()).limit(50).all()
-    return render_template("auth/users.html", users=User.query.order_by(User.email).all(), roles=ROLES, recent=recent)
+    return render_template("auth/users.html", users=User.query.order_by(User.email).all(), roles=ROLES, recent=recent,
+                           demo_loaded=has_demo())
 
 
 @bp.route("/users/new", methods=["POST"])
@@ -164,3 +167,32 @@ def export_all():
     db.session.commit()
     return Response(export_workbook(), mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     headers={"Content-Disposition": f'attachment; filename="mortgage-manager-export-{today():%Y-%m-%d}.xlsx"'})
+
+
+@bp.route("/demo/load", methods=["POST"])
+def load_demo_data():
+    """Admin: fill the book with ~5 years of sample mortgages (all referenced DEMO-…)."""
+    _require_admin()
+    from ..services import demo
+    from ..timeutil import today
+
+    if demo.has_demo():
+        flash("Demo data is already loaded.", "info")
+        return redirect(url_for("auth.users"))
+    n = demo.load_demo(today(), user=g.user)
+    audit("demo_loaded", f"{n} demo mortgages")
+    db.session.commit()
+    flash(f"Loaded {n} demo mortgages with five years of history. Remove them before entering real data.", "success")
+    return redirect(url_for("dashboard.index"))
+
+
+@bp.route("/demo/remove", methods=["POST"])
+def remove_demo_data():
+    _require_admin()
+    from ..services import demo
+
+    n = demo.remove_demo()
+    audit("demo_removed", f"{n} demo mortgages")
+    db.session.commit()
+    flash(f"Removed {n} demo mortgages and everything recorded on them.", "success")
+    return redirect(url_for("auth.users"))
