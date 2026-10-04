@@ -114,7 +114,16 @@ def apply_form(m: Mortgage, form):
 
 
 def form_context(m):
+    from flask import g
+
+    from ..services import form_fields
+
+    show = form_fields.visible_fields(g.user)
+    preset = form_fields.preset_name(g.user)
     return dict(
+        show=show,
+        section_shown={name: any(f in show for f, _ in fields) for name, fields in form_fields.GROUPS},
+        preset_label=form_fields.PRESETS[preset][0] if preset else None,
         m=m,
         property_types=PROPERTY_TYPES,
         statuses=STATUSES,

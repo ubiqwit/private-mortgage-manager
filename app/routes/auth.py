@@ -196,3 +196,37 @@ def remove_demo_data():
     db.session.commit()
     flash(f"Removed {n} demo mortgages and everything recorded on them.", "success")
     return redirect(url_for("auth.users"))
+
+
+def _fields_page(user, back):
+    from ..services import form_fields as ff
+
+    if request.method == "POST":
+        preset = request.form.get("preset")
+        if preset in ff.PRESETS:
+            ff.save_fields(user, ff.PRESETS[preset][2])
+        else:
+            ff.save_fields(user, request.form.getlist("fields"))
+        audit("form_fields_changed", f"{user.email}: {preset or 'custom'}")
+        db.session.commit()
+        who = "Your" if user.id == g.user.id else f"{user.display_name}'s"
+        flash(f"{who} mortgage form now shows {len(ff.visible_fields(user))} of {len(ff.ALL_FIELDS)} fields.", "success")
+        target = request.args.get("next") or ""
+        if target.startswith("/") and not target.startswith("//"):
+            return redirect(target)
+        return redirect(back)
+    return render_template("auth/form_fields.html", target_user=user, groups=ff.GROUPS, required=ff.REQUIRED,
+                           shown=ff.visible_fields(user), presets=ff.PRESETS, current=ff.preset_name(user))
+
+
+@bp.route("/account/fields", methods=["GET", "POST"])
+def form_fields():
+    """Choose which optional fields appear on your mortgage form."""
+    return _fields_page(g.user, url_for("auth.form_fields"))
+
+
+@bp.route("/users/<int:user_id>/fields", methods=["GET", "POST"])
+def user_form_fields(user_id):
+    """Admins can tailor the form for anyone."""
+    _require_admin()
+    return _fields_page(db.get_or_404(User, user_id), url_for("auth.users"))

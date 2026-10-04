@@ -6,6 +6,7 @@ from app import create_app, db
 
 # Tables added by migrations after the baseline revision (keep in sync when adding tables).
 POST_BASELINE_TABLES = ["term_history", "mortgage_document", "mortgage_activity"]
+POST_BASELINE_COLUMNS = [("user", "form_fields")]
 
 
 def test_migrations_match_models(tmp_path):
@@ -29,6 +30,8 @@ def test_legacy_database_without_migration_history_is_adopted(tmp_path):
     with legacy.app_context():
         for table in POST_BASELINE_TABLES:  # didn't exist back then
             db.session.execute(sa.text(f"DROP TABLE {table}"))
+        for table, column in POST_BASELINE_COLUMNS:
+            db.session.execute(sa.text(f'ALTER TABLE "{table}" DROP COLUMN {column}'))
         db.session.commit()
     app = create_app({"SECRET_KEY": "t", "SQLALCHEMY_DATABASE_URI": url, "MARKET_FETCH_ENABLED": False})
     with app.app_context():

@@ -9,7 +9,7 @@
   <div class="col-lg-8">
     <div class="card">
       <table class="table table-sm mb-0">
-        <thead><tr><th>Email</th><th>Name</th><th>Role</th><th>Active</th><th>Last sign-in</th><th>Reset password</th><th></th></tr></thead>
+        <thead><tr><th>Email</th><th>Name</th><th>Role</th><th>Active</th><th>Last sign-in</th><th>Reset password</th><th>Form</th><th></th></tr></thead>
         <tbody>
         {% for u in users %}
           <tr>
@@ -21,6 +21,7 @@
             <td><input type="checkbox" class="form-check-input" name="active" value="1" form="uf{{ u.id }}" {% if u.active %}checked{% endif %}></td>
             <td class="small">{{ u.last_login_at|local if u.last_login_at else 'never' }}</td>
             <td><input type="password" name="password" form="uf{{ u.id }}" class="form-control form-control-sm" placeholder="leave blank" autocomplete="new-password"></td>
+            <td class="text-nowrap"><a class="small" href="{{ url_for('auth.user_form_fields', user_id=u.id) }}"><i class="bi bi-sliders"></i> Fields</a></td>
             <td><form id="uf{{ u.id }}" method="post" action="{{ url_for('auth.update_user', user_id=u.id) }}">{{ csrf_field() }}
               <button class="btn btn-sm btn-outline-primary">Save</button></form></td>
           </tr>

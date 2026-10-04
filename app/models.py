@@ -540,6 +540,7 @@ class User(TimestampMixin, db.Model):
     role = db.Column(db.String(20), nullable=False, default="admin")
     active = db.Column(db.Boolean, nullable=False, default=True)
     last_login_at = db.Column(db.DateTime)
+    form_fields = db.Column(db.Text)  # JSON list of mortgage-form fields shown; NULL = all
 
     def set_password(self, password: str):
         import secrets
