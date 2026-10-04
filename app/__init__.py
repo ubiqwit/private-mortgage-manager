@@ -117,6 +117,13 @@ def create_app(test_config=None):
     def health():
         return {"status": "ok"}
 
+    # Started on the first request in each worker (after gunicorn forks), never in tests.
+    from . import keepalive
+
+    @app.before_request
+    def start_keepalive():
+        keepalive.start(app)
+
     from flask import render_template
 
     @app.errorhandler(400)

@@ -2,7 +2,7 @@
 
 | Piece | Service (free plan) | Notes |
 |---|---|---|
-| App | **Render** free web service | Sleeps after 15 min without visitors; the next visit takes ~1 minute to wake up (see step 5 to avoid this). |
+| App | **Render** free web service | Would sleep after 15 idle minutes; the app keeps itself awake (step 5). |
 | Database | **Neon** free Postgres | 0.5 GB, doesn't expire. Render's own free database is deleted after 30 days, so don't use it. |
 | Address | `mortgages.shaunmalhotra.com` | A subdomain of your domain at Namecheap. Your GitHub Pages site on `shaunmalhotra.com` is untouched. |
 
@@ -50,12 +50,16 @@ GitHub Pages only serves static pages, so it can't run this app — it keeps hos
 - [ ] Render → service → **Environment** → delete `PMM_ADMIN_PASSWORD` (your account is already saved;
       see "Locked out" below if you ever need it again).
 
-## 5. Optional: no wake-up wait
+## 5. Staying awake (automatic)
 
-The free app sleeps after 15 minutes idle. To keep it awake, create a free monitor at
-<https://uptimerobot.com>: type HTTP(s), URL `https://mortgages.shaunmalhotra.com/healthz`, every 5 minutes.
-Render's free hours (750/month) cover one app running all month. The health check doesn't touch the
-database, so Neon still sleeps when you're not using the app.
+Render's free plan sleeps after 15 minutes with no visitors. The app prevents that by itself: while it runs
+on Render it requests its own `/healthz` page every 10 minutes, which counts as a visitor. Nothing to set up.
+
+- One always-on free service uses about 744 of Render's 750 free hours a month, so don't run a second
+  free web service in the same Render account, or both will be paused near month-end.
+- `/healthz` doesn't touch the database, so Neon still sleeps when you're not using the app.
+- To turn it off: Render → service → **Environment** → `PMM_KEEP_AWAKE` = `0`.
+- After a deploy or a Render restart the first visit (or Render's own health check) starts it again.
 
 ## Locked out / forgot your password
 

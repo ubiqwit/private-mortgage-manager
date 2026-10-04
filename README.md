@@ -59,7 +59,8 @@ container disks are fine.
    service and asks for `DATABASE_URL` (the Neon string), `PMM_ADMIN_EMAIL` and `PMM_ADMIN_PASSWORD`.
 3. Point a subdomain (e.g. `mortgages.yourdomain.com`) at the service with a CNAME record.
 
-The free app sleeps after 15 idle minutes (about a minute to wake). Moving to paid plans later is
+The free plan would sleep after 15 idle minutes; the app pings itself every 10 minutes to stay awake
+(`app/keepalive.py`, off with `PMM_KEEP_AWAKE=0`). Moving to paid plans later is
 a plan change only.
 
 ### Option B — any Docker host (Fly.io, Railway, DigitalOcean, AWS, Azure…)
