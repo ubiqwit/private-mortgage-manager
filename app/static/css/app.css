@@ -52,3 +52,7 @@ main { min-width: 0; }
 .stat-card .stat-value-sm { font-size: 1.15rem; white-space: nowrap; }
 .pay-cell { width: 44px; text-align: center; font-size: .72rem; line-height: 1.15; padding: 4px 0; border-radius: 6px; background: #f8f9fa; }
 .pay-cell .bi { font-size: 1.05rem; }
+.company-switch .form-select { background-color: #1f3158; color: #fff; border-color: #34497a; }
+.company-switch .company-name { color: #fff; font-weight: 600; }
+.company-switch a { color: #c9d1e4; text-decoration: none; }
+.company-switch a:hover { color: #fff; }

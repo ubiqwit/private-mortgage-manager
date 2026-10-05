@@ -19,7 +19,21 @@
 ] %}
 <div class="d-flex app-shell">
   <nav class="sidebar d-none d-md-block"><div class="sidebar-inner d-flex flex-column p-3">
-    <a class="brand mb-4" href="{{ url_for('dashboard.index') }}"><i class="bi bi-buildings"></i> Mortgage Manager</a>
+    <a class="brand mb-3" href="{{ url_for('dashboard.index') }}"><i class="bi bi-buildings"></i> Mortgage Manager</a>
+    {% if current_company %}
+    <form method="post" action="{{ url_for('companies.switch') }}" class="company-switch mb-3">{{ csrf_field() }}
+      <input type="hidden" name="next" value="{{ request.full_path }}">
+      <label class="small text-white-50 mb-1" for="company-select">Company</label>
+      {% if my_companies|length > 1 %}
+      <select id="company-select" name="company_id" class="form-select form-select-sm" onchange="this.form.submit()">
+        {% for c in my_companies %}<option value="{{ c.id }}" {% if c.id == current_company.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+      </select>
+      {% else %}
+      <div class="company-name">{{ current_company.name }}</div>
+      {% endif %}
+      {% if current_user.is_admin %}<a class="small" href="{{ url_for('companies.index') }}">Manage companies</a>{% endif %}
+    </form>
+    {% endif %}
     <ul class="nav nav-pills flex-column gap-1">
       {% for endpoint, icon, text in nav if endpoint.split('.')[0] in blueprints_loaded %}
         <li class="nav-item">
@@ -40,11 +54,12 @@
   </div></nav>
   <main class="flex-grow-1">
     <nav class="navbar navbar-dark bg-dark d-md-none px-3">
-      <a class="navbar-brand" href="{{ url_for('dashboard.index') }}">Mortgage Manager</a>
+      <a class="navbar-brand" href="{{ url_for('dashboard.index') }}">{{ current_company.name if current_company else 'Mortgage Manager' }}</a>
       <div class="d-flex gap-3">
         {% for endpoint, icon, text in nav if endpoint.split('.')[0] in blueprints_loaded %}
           <a class="text-white" href="{{ url_for(endpoint) }}" title="{{ text }}"><i class="bi bi-{{ icon }}"></i></a>
         {% endfor %}
+        {% if my_companies|length > 1 %}<a class="text-white" href="{{ url_for('companies.choose') }}" title="Switch company"><i class="bi bi-building"></i></a>{% endif %}
         <a class="text-white" href="{{ url_for('auth.change_password') }}" title="Account"><i class="bi bi-person-circle"></i></a>
       </div>
     </nav>

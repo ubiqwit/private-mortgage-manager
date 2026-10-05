@@ -123,6 +123,8 @@ def create_user():
         flash("That user already exists.", "danger")
     else:
         user = User(email=email, name=request.form.get("name") or None, role=request.form.get("role", "viewer"))
+        if g.get("company") is not None:
+            user.companies = [g.company]  # starts in the company the admin is working in
         try:
             user.set_password(request.form.get("password", ""))
         except ValueError as exc:

@@ -23,6 +23,13 @@ def month_range(year: int, month: int):
     return start, date(year, month, calendar.monthrange(year, month)[1])
 
 
+def _company_name():
+    from ..tenancy import current_company
+
+    company = current_company()
+    return company.name if company else None
+
+
 def default_month(today: date | None = None):
     """The month just ended — what you'd hand the accountant."""
     today = today or local_today()
@@ -122,7 +129,7 @@ def month_end_report(year: int, month: int, prime=None) -> dict:
         year=year, month=month, start=start, end=end, label=start.strftime("%B %Y"),
         rows=rows, totals=totals, transactions=transactions, bank=bank, manual=manual,
         ytd=ytd_by_month(year, month), has_syndicated=any(r["share_pct"] != 100 for r in rows),
-        generated=local_now(),
+        generated=local_now(), company=_company_name(),
     )
 
 
@@ -190,7 +197,7 @@ def month_end_workbook(report: dict, prepared_by: str = "") -> bytes:
     def sheet(title, heading, columns, first=False):
         ws = wb.active if first else wb.create_sheet()
         ws.title = title
-        ws["A1"] = heading
+        ws["A1"] = heading + (f" · {report['company']}" if report.get("company") else "")
         ws["A1"].font = Font(bold=True, size=14)
         ws["A2"] = (f"Period {report['start']:%b %d, %Y} – {report['end']:%b %d, %Y} · generated "
                     f"{report['generated']:%Y-%m-%d %H:%M}" + (f" by {prepared_by}" if prepared_by else ""))
@@ -358,7 +365,8 @@ def annual_report(year: int, prime=None) -> dict:
     totals = {k: calc.money(sum((r[k] for r in rows), ZERO)) for k in keys}
     return dict(year=year, start=start, end=end, partial=end > today, rows=rows, totals=totals,
                 ytd=ytd_by_month(year, 12 if end <= today else today.month) if start <= today else None,
-                has_syndicated=any(r["share_pct"] != 100 for r in rows), generated=local_now())
+                has_syndicated=any(r["share_pct"] != 100 for r in rows), generated=local_now(),
+                company=_company_name())
 
 
 def annual_workbook(report: dict, prepared_by: str = "") -> bytes:
@@ -370,7 +378,8 @@ def annual_workbook(report: dict, prepared_by: str = "") -> bytes:
     wb = Workbook()
     ws = wb.active
     ws.title = f"Income {report['year']}"
-    ws["A1"] = f"Mortgage income summary — {report['year']}" + (" (year to date)" if report["partial"] else "")
+    ws["A1"] = (f"Mortgage income summary — {report['year']}" + (" (year to date)" if report["partial"] else "")
+                + (f" · {report['company']}" if report.get("company") else ""))
     ws["A1"].font = Font(bold=True, size=14)
     ws["A2"] = f"Generated {report['generated']:%Y-%m-%d %H:%M}" + (f" by {prepared_by}" if prepared_by else "")
     ws["A2"].font = Font(italic=True, color="666666")

@@ -16,6 +16,7 @@ from anywhere.
 | **Market & rates** | Live Bank of Canada policy rate, prime, posted 5-yr mortgage rate, GoC 2/5/10-yr yields and CPI; rate-decision history (hikes/cuts); news feeds; what a ±25/50 bp prime move does to your income; how your fixed rates compare to the market; renewals coming up. |
 | **Bank statements** | Upload CSV, Excel or OFX/QFX exports from any Canadian bank (column layout is auto-detected and can be corrected). Duplicates are skipped. Deposits are matched to mortgages automatically by learned description, borrower name, amount and due date; you confirm, split a deposit across mortgages, or mark it as not mortgage-related. |
 | **Month-end report** | Per mortgage: opening/closing balance, principal repaid, interest and fees received (cash), interest earned (accrual), scheduled vs received, arrears. Transactions, bank reconciliation and YTD income by month. Download as an Excel workbook (with formulas) or CSV, or print to PDF. Close the books once it's sent so nothing in that month can change. An annual income summary (with Excel export) covers tax time. |
+| **Companies** | Keep several lending entities apart (e.g. a holding company and a personal book). Switch with the selector at the top of the sidebar; each company has its own mortgages, bank statements, reports and closed months. Market data and logins are shared. Admins see every company; editors and viewers only the ones they're given. |
 | **Security** | Individual logins with roles (admin / editor / read-only viewer), hashed passwords, lockout after failed attempts, CSRF protection, secure cookies, CSP, audit log of every change, full data export. |
 
 ## Your monthly routine
@@ -94,6 +95,9 @@ See `.env.example` for a template.
 * **admin** — everything, plus users, closing/reopening months and the full data export.
 * **editor** — add and change mortgages, transactions and statements.
 * **viewer** — read-only; ideal for your accountant to pull reports themselves.
+
+Admins manage companies under **Manage companies** (sidebar), including which companies
+each editor or viewer can open. Admins can open every company.
 
 Five failed sign-ins lock an account for 15 minutes; changing a password signs out every
 other device; the Users page shows the audit log. From a shell:

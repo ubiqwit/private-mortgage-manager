@@ -90,8 +90,12 @@ def _fee(m, d, amount, notes):
     return t
 
 
-def load_demo(today: date, count: int = 20, user=None, seed: int = 7) -> int:
-    """Create ``count`` demo mortgages funded over the last five years, with their history."""
+def load_demo(today: date, count: int = 20, user=None, seed: int = 7, company=None) -> int:
+    """Create ``count`` demo mortgages funded over the last five years, with their history,
+    in ``company`` (default: the current company, else the first one)."""
+    from ..tenancy import current_company, ensure_default_company
+
+    company = company or current_company() or ensure_default_company()
     rnd = random.Random(seed)
     created = 0
     span_months = 60
@@ -115,7 +119,7 @@ def load_demo(today: date, count: int = 20, user=None, seed: int = 7) -> int:
                     else f"{FIRST[i % len(FIRST)]} {LAST[(i * 3) % len(LAST)]}")
         city = CITIES[(i * 5) % len(CITIES)]
         m = Mortgage(
-            reference=f"{PREFIX}{i + 1:02d}", borrower_name=borrower,
+            company_id=company.id, reference=f"{PREFIX}{i + 1:02d}", borrower_name=borrower,
             borrower_email=f"{borrower.split()[0].lower()}@example.com", borrower_phone=f"416-555-{1000 + i * 37:04d}",
             property_address=f"{rnd.randint(2, 980)} {STREETS[(i * 3 + i // 5) % len(STREETS)]}", property_city=city,
             property_province="ON", property_type=ptype, property_value=value, appraisal_date=funded - timedelta(days=20),

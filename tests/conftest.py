@@ -26,9 +26,12 @@ def app(tmp_path):
             db.drop_all()
 
 
-def make_user(email="owner@example.com", role="admin"):
+def make_user(email="owner@example.com", role="admin", companies=None):
+    from app.tenancy import ensure_default_company
+
     user = User(email=email, role=role)
     user.set_password(PASSWORD)
+    user.companies = companies if companies is not None else [ensure_default_company()]
     db.session.add(user)
     db.session.commit()
     return user
