@@ -102,6 +102,24 @@ def test_delete_requires_reference(client):
     assert Mortgage.query.count() == 0
 
 
+def test_editor_can_delete_viewer_cannot(app, client):
+    from .conftest import PASSWORD, make_user
+
+    m = create(client)
+    make_user("viewer@example.com", role="viewer")
+    make_user("editor@example.com", role="editor")
+    viewer, editor = app.test_client(), app.test_client()
+    viewer.post("/login", data={"email": "viewer@example.com", "password": PASSWORD})
+    editor.post("/login", data={"email": "editor@example.com", "password": PASSWORD})
+
+    assert "Delete this mortgage" not in viewer.get(f"/mortgages/{m.id}").get_data(as_text=True)
+    assert viewer.post(f"/mortgages/{m.id}/delete", data={"confirm": m.reference}).status_code == 403
+    page = editor.get(f"/mortgages/{m.id}").get_data(as_text=True)
+    assert "Delete this mortgage" in page and 'id="delete-link"' in page
+    editor.post(f"/mortgages/{m.id}/delete", data={"confirm": m.reference})
+    assert Mortgage.query.count() == 0
+
+
 def test_edit(client):
     m = create(client)
     resp = client.post(f"/mortgages/{m.id}/edit", data={**BASE, "reference": m.reference, "interest_rate": "11"})

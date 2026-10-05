@@ -92,7 +92,7 @@ See `.env.example` for a template.
 ### Users and access
 
 * **admin** — everything, plus users, closing/reopening months and the full data export.
-* **editor** — add and change mortgages, transactions and statements.
+* **editor** — add, change and delete mortgages, transactions and statements.
 * **viewer** — read-only; ideal for your accountant to pull reports themselves.
 
 Five failed sign-ins lock an account for 15 minutes; changing a password signs out every
