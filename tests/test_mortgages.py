@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from app import db
@@ -177,3 +177,25 @@ def test_variable_history_uses_prime_on_the_day(client):
     m = create(client, rate_type="variable", prime_spread="5", record_lender_fee="")
     assert m.effective_rate(on=date(2026, 3, 1)) == Decimal("10.20")
     assert m.effective_rate(on=date(2026, 7, 1)) == Decimal("9.95")
+
+
+def test_status_filter_and_default_order_follow_displayed_status(client):
+    from app.timeutil import today
+
+    t = today()
+    create(client, borrower_name="Later Borrower", funded_date=(t - timedelta(days=30)).isoformat(),
+                   term_months="", maturity_date=(t + timedelta(days=300)).isoformat())
+    past = create(client, borrower_name="Past Borrower", funded_date=(t - timedelta(days=500)).isoformat(),
+                  term_months="", maturity_date=(t - timedelta(days=100)).isoformat())
+    create(client, borrower_name="Soon Borrower", funded_date=(t - timedelta(days=30)).isoformat(),
+                  term_months="", maturity_date=(t + timedelta(days=60)).isoformat())
+    assert past.status == "active" and past.display_status == "matured"
+
+    active = client.get("/mortgages/?status=active").get_data(as_text=True)
+    assert "Later Borrower" in active and "Soon Borrower" in active and "Past Borrower" not in active
+    matured = client.get("/mortgages/?status=matured").get_data(as_text=True)
+    assert "Past Borrower" in matured and "Later Borrower" not in matured
+
+    page = client.get("/mortgages/").get_data(as_text=True)
+    order = [page.index(n) for n in ("Soon Borrower", "Later Borrower", "Past Borrower")]
+    assert order == sorted(order), "running loans by maturity first, matured ones at the bottom"

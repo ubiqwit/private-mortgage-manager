@@ -10,6 +10,7 @@ from .. import db
 from ..models import (
     ACTIVITY_KINDS,
     DOCUMENT_CATEGORIES,
+    OPEN_STATUSES,
     PROPERTY_TYPES,
     STATUSES,
     TXN_TYPES,
@@ -145,7 +146,13 @@ def index():
     q = Mortgage.query
     status = request.args.get("status", "open")
     if status == "open":
-        q = q.filter(Mortgage.status.in_(("active", "in_arrears", "default", "matured")))
+        q = q.filter(Mortgage.status.in_(OPEN_STATUSES))
+    elif status in ("active", "in_arrears"):
+        # Shown as "Matured" once past maturity, so they don't belong under Active / In arrears.
+        q = q.filter_by(status=status).filter(Mortgage.maturity_date >= local_today())
+    elif status == "matured":
+        q = q.filter(or_(Mortgage.status == "matured",
+                         Mortgage.status.in_(("active", "in_arrears")) & (Mortgage.maturity_date < local_today())))
     elif status != "all":
         q = q.filter_by(status=status)
     search = request.args.get("q", "").strip()
@@ -168,6 +175,10 @@ def index():
         "principal": Mortgage.principal_amount.desc(),
     }.get(sort, Mortgage.maturity_date)
     mortgages = q.order_by(order).all()
+    if sort == "maturity":
+        # Running loans first (soonest maturity at the top), then matured ones, then paid out.
+        rank = {"matured": 1, "paid_out": 2}
+        mortgages.sort(key=lambda m: rank.get(m.display_status, 0))
     rows = [
         dict(m=m, balance=m.balance(), rate=m.effective_rate(prime), payment=m.regular_payment(prime),
              arrears=m.arrears(prime=prime), ltv=m.combined_ltv(), next_due=m.next_due_date())
