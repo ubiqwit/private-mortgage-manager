@@ -8,10 +8,8 @@ from decimal import Decimal
 from ..models import (
     AuditLog,
     BankTransaction,
-    Company,
     MarketObservation,
     Mortgage,
-    MortgageActivity,
     MortgageTransaction,
     StatementImport,
     TermHistory,
@@ -21,11 +19,9 @@ from ..timeutil import now as local_now
 from .safety import set_text_cell
 
 SHEETS = [
-    ("Companies", Company, None),
     ("Mortgages", Mortgage, None),
     ("Transactions", MortgageTransaction, None),
     ("Term history", TermHistory, None),
-    ("Activity log", MortgageActivity, None),
     ("Bank lines", BankTransaction, None),
     ("Statement imports", StatementImport, None),
     ("Market rates", MarketObservation, None),
@@ -52,16 +48,14 @@ def export_workbook() -> bytes:
     info = wb.create_sheet("About")
     info["A1"] = "Private Mortgage Manager — full data export"
     info["A1"].font = Font(bold=True, size=14)
-    info["A2"] = (f"Exported {local_now():%Y-%m-%d %H:%M}. Every company, one sheet per table "
-                "(company_id links rows to the Companies sheet); keep this file somewhere safe.")
+    info["A2"] = f"Exported {local_now():%Y-%m-%d %H:%M}. One sheet per table; keep this file somewhere safe."
     for name, model, exclude in SHEETS:
         ws = wb.create_sheet(name)
         cols = [c.name for c in model.__table__.columns if not exclude or c.name not in exclude]
         ws.append(cols)
         for c in ws[1]:
             c.font, c.fill = Font(bold=True, color="FFFFFF"), PatternFill("solid", fgColor="14213D")
-        rows = model.query.order_by(*model.__table__.primary_key.columns).execution_options(skip_company_scope=True)
-        for r, row in enumerate(rows.all(), start=2):
+        for r, row in enumerate(model.query.order_by(*model.__table__.primary_key.columns).all(), start=2):
             for i, c in enumerate(cols, start=1):
                 set_text_cell(ws.cell(row=r, column=i), _cell(getattr(row, c)))
         for i, col in enumerate(cols, start=1):

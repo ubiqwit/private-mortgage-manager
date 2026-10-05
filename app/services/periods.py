@@ -12,16 +12,8 @@ class PeriodClosed(ValueError):
     pass
 
 
-def _key() -> str:
-    """Each company closes its own books."""
-    from ..tenancy import current_company_id
-
-    cid = current_company_id()
-    return f"{KEY}:{cid}" if cid is not None else KEY
-
-
 def closed_through() -> date | None:
-    raw = Setting.get(_key())
+    raw = Setting.get(KEY)
     return date.fromisoformat(raw) if raw else None
 
 
@@ -44,4 +36,4 @@ def ensure_open(*days, action="change"):
 
 
 def set_closed_through(day: date | None):
-    Setting.set(_key(), day.isoformat() if day else None)
+    Setting.set(KEY, day.isoformat() if day else None)

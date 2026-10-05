@@ -23,13 +23,6 @@ def month_range(year: int, month: int):
     return start, date(year, month, calendar.monthrange(year, month)[1])
 
 
-def _company_name():
-    from ..tenancy import current_company
-
-    company = current_company()
-    return company.name if company else None
-
-
 def default_month(today: date | None = None):
     """The month just ended — what you'd hand the accountant."""
     today = today or local_today()
@@ -129,7 +122,7 @@ def month_end_report(year: int, month: int, prime=None) -> dict:
         year=year, month=month, start=start, end=end, label=start.strftime("%B %Y"),
         rows=rows, totals=totals, transactions=transactions, bank=bank, manual=manual,
         ytd=ytd_by_month(year, month), has_syndicated=any(r["share_pct"] != 100 for r in rows),
-        generated=local_now(), company=_company_name(),
+        generated=local_now(),
     )
 
 
@@ -197,7 +190,7 @@ def month_end_workbook(report: dict, prepared_by: str = "") -> bytes:
     def sheet(title, heading, columns, first=False):
         ws = wb.active if first else wb.create_sheet()
         ws.title = title
-        ws["A1"] = heading + (f" · {report['company']}" if report.get("company") else "")
+        ws["A1"] = heading
         ws["A1"].font = Font(bold=True, size=14)
         ws["A2"] = (f"Period {report['start']:%b %d, %Y} – {report['end']:%b %d, %Y} · generated "
                     f"{report['generated']:%Y-%m-%d %H:%M}" + (f" by {prepared_by}" if prepared_by else ""))
@@ -234,7 +227,7 @@ def month_end_workbook(report: dict, prepared_by: str = "") -> bytes:
 
     # 1. Summary -----------------------------------------------------------------
     cols = [
-        ("Reference", 11, None), ("Borrower", 26, None), ("Property", 30, None), ("Position", 8, None),
+        ("Reference", 11, None), ("Borrower", 26, None), ("Owners", 22, None), ("Property", 30, None), ("Position", 8, None),
         ("Rate %", 8, PCT), ("Opening balance", 15, MONEY), ("Advances", 13, MONEY), ("Principal repaid", 14, MONEY),
         ("Closing balance", 15, MONEY), ("Interest received", 14, MONEY), ("Fees received", 12, MONEY),
         ("Total income (interest + fees)", 15, MONEY), ("Interest earned (accrual)", 15, MONEY),
@@ -242,16 +235,16 @@ def month_end_workbook(report: dict, prepared_by: str = "") -> bytes:
         ("Variance", 12, MONEY), ("Arrears at month end", 13, MONEY), ("Status", 12, None),
     ]
     if report["has_syndicated"]:
-        cols[12:12] = [("Your share %", 9, PCT), ("Your share of income", 14, MONEY)]
+        cols[13:13] = [("Your share %", 9, PCT), ("Your share of income", 14, MONEY)]
     ws = sheet("Summary", f"Mortgage income summary — {label}", cols, first=True)
     data = []
     for r in report["rows"]:
         m = r["m"]
-        row = [m.reference, m.borrower_name, f"{m.property_address}, {m.property_city or ''}".strip(", "),
+        row = [m.reference, m.borrower_name, m.owners or "", f"{m.property_address}, {m.property_city or ''}".strip(", "),
                m.position_label, r["rate"], r["opening"], r["advances"], r["principal"], r["closing"], r["interest"],
                r["fees"], r["income"], r["accrued"], r["expected"], r["regular"], r["variance"], r["arrears"], r["status"]]
         if report["has_syndicated"]:
-            row[12:12] = [r["share_pct"], r["your_income"]]
+            row[13:13] = [r["share_pct"], r["your_income"]]
         data.append(row)
     money_cols = [i for i, c in enumerate(cols, start=1) if c[2] == MONEY]
     end_row = write_rows(ws, cols, data, money_cols)
@@ -365,8 +358,7 @@ def annual_report(year: int, prime=None) -> dict:
     totals = {k: calc.money(sum((r[k] for r in rows), ZERO)) for k in keys}
     return dict(year=year, start=start, end=end, partial=end > today, rows=rows, totals=totals,
                 ytd=ytd_by_month(year, 12 if end <= today else today.month) if start <= today else None,
-                has_syndicated=any(r["share_pct"] != 100 for r in rows), generated=local_now(),
-                company=_company_name())
+                has_syndicated=any(r["share_pct"] != 100 for r in rows), generated=local_now())
 
 
 def annual_workbook(report: dict, prepared_by: str = "") -> bytes:
@@ -378,12 +370,11 @@ def annual_workbook(report: dict, prepared_by: str = "") -> bytes:
     wb = Workbook()
     ws = wb.active
     ws.title = f"Income {report['year']}"
-    ws["A1"] = (f"Mortgage income summary — {report['year']}" + (" (year to date)" if report["partial"] else "")
-                + (f" · {report['company']}" if report.get("company") else ""))
+    ws["A1"] = f"Mortgage income summary — {report['year']}" + (" (year to date)" if report["partial"] else "")
     ws["A1"].font = Font(bold=True, size=14)
     ws["A2"] = f"Generated {report['generated']:%Y-%m-%d %H:%M}" + (f" by {prepared_by}" if prepared_by else "")
     ws["A2"].font = Font(italic=True, color="666666")
-    cols = [("Reference", 11), ("Borrower", 28), ("Property", 32), ("Opening balance", 15), ("Advanced", 14),
+    cols = [("Reference", 11), ("Borrower", 28), ("Owners", 22), ("Property", 32), ("Opening balance", 15), ("Advanced", 14),
             ("Principal repaid", 15), ("Closing balance", 15), ("Interest received", 15), ("Fees received", 13),
             ("Total income", 14), ("Interest earned (accrual)", 16)]
     if report["has_syndicated"]:
@@ -395,20 +386,20 @@ def annual_workbook(report: dict, prepared_by: str = "") -> bytes:
     r = 5
     for row in report["rows"]:
         m = row["m"]
-        values = [m.reference, m.borrower_name, f"{m.property_address}, {m.property_city or ''}".strip(", "),
+        values = [m.reference, m.borrower_name, m.owners or "", f"{m.property_address}, {m.property_city or ''}".strip(", "),
                   row["opening"], row["advances"], row["principal"], row["closing"], row["interest"], row["fees"],
                   row["income"], row["accrued"]]
         if report["has_syndicated"]:
             values += [row["share_pct"], row["your_income"]]
         for i, v in enumerate(values, start=1):
             c = set_text_cell(ws.cell(row=r, column=i), float(v) if isinstance(v, Decimal) else v)
-            if i >= 4 and not (report["has_syndicated"] and i == 12):
+            if i >= 5 and not (report["has_syndicated"] and i == 13):
                 c.number_format = MONEY
         r += 1
     if report["rows"]:
         ws.cell(row=r, column=1, value="Total").font = Font(bold=True)
-        for i in range(4, len(cols) + 1):
-            if report["has_syndicated"] and i == 12:
+        for i in range(5, len(cols) + 1):
+            if report["has_syndicated"] and i == 13:
                 continue
             col = get_column_letter(i)
             c = ws.cell(row=r, column=i, value=f"=SUM({col}5:{col}{r - 1})")

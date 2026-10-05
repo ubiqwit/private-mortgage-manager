@@ -7,7 +7,6 @@ from flask import Blueprint, Response, flash, g, redirect, request, url_for
 
 from .. import db
 from ..models import DOCUMENT_CATEGORIES, Mortgage, MortgageDocument, audit
-from ..tenancy import get_owned_or_404
 
 bp = Blueprint("documents", __name__, url_prefix="/mortgages")
 
@@ -26,7 +25,7 @@ def clean_filename(name: str) -> str:
 
 @bp.route("/<int:mortgage_id>/documents", methods=["POST"])
 def upload(mortgage_id):
-    m = get_owned_or_404(Mortgage, mortgage_id)
+    m = db.get_or_404(Mortgage, mortgage_id)
     files = [f for f in request.files.getlist("files") if f and f.filename]
     if not files:
         flash("Choose one or more files to upload.", "warning")
@@ -65,7 +64,7 @@ def upload(mortgage_id):
 
 @bp.route("/documents/<int:doc_id>/download")
 def download(doc_id):
-    doc = get_owned_or_404(MortgageDocument, doc_id)
+    doc = db.get_or_404(MortgageDocument, doc_id)
     inline = request.args.get("view") == "1" and doc.content_type in ("application/pdf", "image/png", "image/jpeg", "image/gif", "image/webp")
     disposition = "inline" if inline else "attachment"
     return Response(doc.content, mimetype=doc.content_type, headers={
@@ -77,7 +76,7 @@ def download(doc_id):
 
 @bp.route("/documents/<int:doc_id>/delete", methods=["POST"])
 def delete(doc_id):
-    doc = get_owned_or_404(MortgageDocument, doc_id)
+    doc = db.get_or_404(MortgageDocument, doc_id)
     m = doc.mortgage
     audit("document_deleted", f"{m.reference}: {doc.filename}")
     db.session.delete(doc)

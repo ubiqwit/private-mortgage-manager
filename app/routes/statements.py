@@ -12,7 +12,6 @@ from ..services import matching
 from ..services import statements as st
 from ..services.market import latest_prime
 from ..services.periods import PeriodClosed, closed_through, ensure_open, is_closed
-from ..tenancy import get_owned_or_404
 from ..timeutil import utcnow
 
 bp = Blueprint("statements", __name__, url_prefix="/statements")
@@ -160,7 +159,7 @@ def map_columns(token):
 
 @bp.route("/<int:statement_id>/delete", methods=["POST"])
 def delete_statement(statement_id):
-    imp = get_owned_or_404(StatementImport, statement_id)
+    imp = db.get_or_404(StatementImport, statement_id)
     try:
         ensure_open(*(bt.date for bt in imp.transactions), action="delete a statement with lines in a closed month")
     except PeriodClosed as exc:
@@ -225,8 +224,8 @@ def _back():
 
 @bp.route("/lines/<int:line_id>/allocate", methods=["POST"])
 def allocate(line_id):
-    bt = get_owned_or_404(BankTransaction, line_id)
-    m = get_owned_or_404(Mortgage, request.form.get("mortgage_id", type=int))
+    bt = db.get_or_404(BankTransaction, line_id)
+    m = db.get_or_404(Mortgage, request.form.get("mortgage_id", type=int))
     txn_type = request.form.get("type", "payment")
     if txn_type not in dict(TXN_TYPES):
         abort(400)
@@ -238,7 +237,7 @@ def allocate(line_id):
     amount = request.form.get("amount")
     existing = None
     if request.form.get("existing_id"):
-        existing = get_owned_or_404(MortgageTransaction, request.form.get("existing_id", type=int))
+        existing = db.get_or_404(MortgageTransaction, request.form.get("existing_id", type=int))
     try:
         amount = Decimal(amount.replace(",", "").replace("$", "")) if amount else None
         txn = matching.allocate(bt, m, txn_type, amount=amount, remember=bool(request.form.get("remember", "1")),
@@ -269,7 +268,7 @@ def auto_match():
 
 @bp.route("/lines/<int:line_id>/ignore", methods=["POST"])
 def ignore(line_id):
-    bt = get_owned_or_404(BankTransaction, line_id)
+    bt = db.get_or_404(BankTransaction, line_id)
     if bt.mortgage_transactions:
         flash("Unmatch this line before ignoring it.", "warning")
         return _back()
@@ -285,7 +284,7 @@ def ignore(line_id):
 
 @bp.route("/lines/<int:line_id>/restore", methods=["POST"])
 def restore(line_id):
-    bt = get_owned_or_404(BankTransaction, line_id)
+    bt = db.get_or_404(BankTransaction, line_id)
     try:
         ensure_open(bt.date, *(t.date for t in bt.mortgage_transactions), action="unmatch this line")
     except PeriodClosed as exc:

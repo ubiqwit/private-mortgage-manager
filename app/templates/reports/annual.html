@@ -5,7 +5,7 @@
   <div>
     <a href="{{ url_for('reports.month_end') }}" class="small text-decoration-none"><i class="bi bi-arrow-left"></i> Month-end report</a>
     <h1 class="h3 mb-0">Annual income summary · {{ r.year }}{% if r.partial %} <span class="badge text-bg-light align-middle fs-6">year to date</span>{% endif %}</h1>
-    <div class="text-secondary small">{{ r.company ~ ' · ' if r.company }}Mortgage income for your tax return and year-end accounts.</div>
+    <div class="text-secondary small">Mortgage income for your tax return and year-end accounts.</div>
   </div>
   <div class="d-flex gap-2 no-print">
     <form method="get"><select name="year" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Year">
@@ -34,7 +34,7 @@
     <tbody>
     {% for row in r.rows %}
       <tr><td class="text-nowrap"><a href="{{ url_for('mortgages.detail', mortgage_id=row.m.id) }}">{{ row.m.reference }}</a></td>
-        <td>{{ row.m.borrower_name }}</td><td class="num">{{ row.opening|money }}</td><td class="num">{{ row.advances|money }}</td>
+        <td>{{ row.m.borrower_name }}{% if row.m.owners %}<div class="small text-secondary">{{ row.m.owners }}</div>{% endif %}</td><td class="num">{{ row.opening|money }}</td><td class="num">{{ row.advances|money }}</td>
         <td class="num">{{ row.principal|money }}</td><td class="num">{{ row.closing|money }}</td><td class="num">{{ row.interest|money }}</td>
         <td class="num">{{ row.fees|money }}</td><td class="num fw-semibold">{{ row.income|money }}</td>
         {% if r.has_syndicated %}<td class="num">{{ row.your_income|money }} <span class="small text-secondary">({{ row.share_pct|pct(0) }})</span></td>{% endif %}

@@ -82,6 +82,7 @@
     </div>
     <div class="card mb-3"><div class="card-header bg-white fw-semibold">Borrower &amp; parties</div>
       <table class="table table-sm mb-0">
+        {{ row('Owners', m.owners) }}
         {{ row('Email', m.borrower_email) }}
         {{ row('Phone', m.borrower_phone) }}
         {{ row('Guarantors', m.guarantors) }}

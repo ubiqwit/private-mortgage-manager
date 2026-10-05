@@ -13,7 +13,7 @@
 
 <form class="row g-2 mb-3" method="get">
   <div class="col-sm-5 col-lg-4">
-    <input name="q" value="{{ search }}" class="form-control" placeholder="Search borrower, address, reference, broker…">
+    <input name="q" value="{{ search }}" class="form-control" placeholder="Search borrower, address, reference, owner…">
   </div>
   <div class="col-auto">
     <select name="status" class="form-select" onchange="this.form.submit()">
@@ -24,6 +24,14 @@
       {% endfor %}
     </select>
   </div>
+  {% if owner_names %}
+  <div class="col-auto">
+    <select name="owner" class="form-select" onchange="this.form.submit()" aria-label="Owner">
+      <option value="">All owners</option>
+      {% for name in owner_names %}<option value="{{ name }}" {% if owner == name %}selected{% endif %}>{{ name }}</option>{% endfor %}
+    </select>
+  </div>
+  {% endif %}
   <div class="col-auto">
     <select name="sort" class="form-select" onchange="this.form.submit()">
       {% for value, label in [('maturity','Sort: maturity'),('reference','Sort: reference'),('borrower','Sort: borrower'),('rate','Sort: rate'),('principal','Sort: principal')] %}
@@ -49,7 +57,7 @@
       {% set m = r.m %}
       <tr onclick="location.href='{{ url_for('mortgages.detail', mortgage_id=m.id) }}'" style="cursor:pointer">
         <td class="text-nowrap"><a href="{{ url_for('mortgages.detail', mortgage_id=m.id) }}">{{ m.reference }}</a></td>
-        <td>{{ m.borrower_name }}</td>
+        <td>{{ m.borrower_name }}{% if m.owners %}<div class="small text-secondary"><i class="bi bi-person-badge"></i> {{ m.owners }}</div>{% endif %}</td>
         <td class="small">{{ m.property_address }}{% if m.property_city %}, {{ m.property_city }}{% endif %}</td>
         <td>{{ m.position_label }}</td>
         <td class="num">{{ r.balance|money }}</td>

@@ -69,9 +69,7 @@ def _seed_demo(today=None):
     from .models import Mortgage, MortgageTransaction
     from .services import ledger
     from .services.matching import name_tokens
-    from .tenancy import ensure_default_company
 
-    company = ensure_default_company()
     today = today or local_today()
     rnd = random.Random(42)
     samples = [
@@ -87,7 +85,7 @@ def _seed_demo(today=None):
     for i, (name, addr, city, ptype, value, pos, prior, principal, rate, term, age, ptype_pay) in enumerate(samples, 1):
         funded = (today - relativedelta(months=age)).replace(day=1)
         m = Mortgage(
-            company_id=company.id, reference=f"M-{i:03d}", borrower_name=name, property_address=addr, property_city=city,
+            reference=f"M-{i:03d}", borrower_name=name, property_address=addr, property_city=city,
             property_province="ON", property_type=ptype, property_value=Decimal(value), position=pos,
             prior_charges=Decimal(prior), principal_amount=Decimal(principal),
             interest_rate=Decimal(rate or "9.95"), rate_type="variable" if rate is None else "fixed",

@@ -106,6 +106,7 @@ def dashboard_stats(today: date | None = None, prime=None) -> dict:
     by_position = defaultdict(lambda: ZERO)
     by_type = defaultdict(lambda: ZERO)
     by_city = defaultdict(lambda: ZERO)
+    by_owner = defaultdict(lambda: ZERO)
     ltv = OrderedDict((label, ZERO) for label, _ in LTV_BUCKETS)
     ltv_unknown = ZERO
     for r in rows:
@@ -113,6 +114,7 @@ def dashboard_stats(today: date | None = None, prime=None) -> dict:
         by_position[m.position_label + " mortgages"] += r["balance"]
         by_type[dict(PROPERTY_TYPES).get(m.property_type, "Other")] += r["balance"]
         by_city[(m.property_city or "Unknown").strip().title()] += r["balance"]
+        by_owner[(m.owners or "").strip() or "Not recorded"] += r["balance"]
         if r["cltv"] is None:
             ltv_unknown += r["balance"]
         else:
@@ -123,6 +125,12 @@ def dashboard_stats(today: date | None = None, prime=None) -> dict:
     cities = sorted(by_city.items(), key=lambda kv: kv[1], reverse=True)
     if len(cities) > 6:
         cities = cities[:5] + [("Other", sum((v for _, v in cities[5:]), ZERO))]
+
+    owners = sorted(by_owner.items(), key=lambda kv: kv[1], reverse=True)
+    if len(owners) > 6:
+        owners = owners[:5] + [("Other", sum((v for _, v in owners[5:]), ZERO))]
+    if [name for name, _ in owners] == ["Not recorded"]:
+        owners = []  # nobody has filled in owners yet
 
     largest = max(rows, key=lambda r: r["balance"], default=None)
 
@@ -195,6 +203,7 @@ def dashboard_stats(today: date | None = None, prime=None) -> dict:
         by_position=sorted(by_position.items()),
         by_type=sorted(by_type.items(), key=lambda kv: kv[1], reverse=True),
         by_city=cities,
+        by_owner=owners,
         ltv={"labels": list(ltv), "values": [float(v) for v in ltv.values()], "unknown": ltv_unknown},
         alerts=alerts,
         upcoming=upcoming,

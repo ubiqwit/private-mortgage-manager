@@ -127,8 +127,9 @@
     <div class="card p-3 h-100">
       <div class="fw-semibold mb-2">Concentration</div>
       <div class="row g-4">
-        {% for title, items in [('Charge position', s.by_position), ('Property type', s.by_type), ('City', s.by_city)] %}
-        <div class="col-md-4">
+        {% set groups = [('Owners', s.by_owner)] if s.by_owner else [] %}
+        {% for title, items in groups + [('Charge position', s.by_position), ('Property type', s.by_type), ('City', s.by_city)] %}
+        <div class="{{ 'col-md-6 col-xl-3' if s.by_owner else 'col-md-4' }}">
           <div class="small text-secondary mb-1">{{ title }}</div>
           {% for name, value in items %}
             {% set share = (value / s.total_balance * 100) if s.total_balance else 0 %}

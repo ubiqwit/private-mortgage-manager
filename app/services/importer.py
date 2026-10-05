@@ -39,6 +39,7 @@ COLUMNS = [
     ("Term months", "term_months", "Term or maturity date required"),
     ("Maturity date", "maturity_date", "YYYY-MM-DD"),
     ("Your share %", "ownership_pct", "100 unless syndicated"),
+    ("Owners", "owners", "Who owns or funded it, e.g. 9929916 Canada Inc"),
     ("Lender fee", "lender_fee", ""),
     ("Broker", "broker_name", ""),
     ("Broker fee", "broker_fee", ""),
@@ -101,7 +102,7 @@ def template_workbook() -> bytes:
         ws.column_dimensions[get_column_letter(i)].width = max(14, len(h) + 4)
     ws.append(["", "Jane Smith", "jane@example.com", "416-555-0100", "12 Maple Ave", "Toronto", "ON", "Detached",
                1150000, "2026-01-10", 2, 610000, 250000, 10.99, "Fixed", "", "", "Monthly", "Interest only", "Monthly",
-               "", "", "2026-02-01", "2026-03-01", 12, "", 100, 5000, "Example Brokerage", 2500, "", 1000, 300,
+               "", "", "2026-02-01", "2026-03-01", 12, "", 100, "Example Holdings Inc", 5000, "Example Brokerage", 2500, "", 1000, 300,
                "2027-01-31", "Active", "E-TRANSFER JANE SMITH", "Example row — delete before importing", "", ""])
     ws.freeze_panes = "A2"
     help_ws = wb.create_sheet("Instructions")

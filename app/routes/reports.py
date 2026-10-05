@@ -13,14 +13,6 @@ from ..timeutil import today as local_today
 bp = Blueprint("reports", __name__, url_prefix="/reports")
 
 
-def _slug():
-    """Company name for download filenames, e.g. 'mft-holdings-'."""
-    company = g.get("company")
-    if not company:
-        return ""
-    return re.sub(r"[^a-z0-9]+", "-", company.name.lower()).strip("-")[:40] + "-"
-
-
 def _selected_month():
     raw = request.values.get("month", "")
     if raw:
@@ -82,7 +74,7 @@ def month_end_xlsx():
     report = reports.month_end_report(year, month, latest_prime())
     data = reports.month_end_workbook(report, prepared_by=g.user.display_name)
     return Response(data, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    headers={"Content-Disposition": f'attachment; filename="{_slug()}mortgage-income-{year:04d}-{month:02d}.xlsx"'})
+                    headers={"Content-Disposition": f'attachment; filename="mortgage-income-{year:04d}-{month:02d}.xlsx"'})
 
 
 @bp.route("/month-end-transactions.csv")
@@ -90,7 +82,7 @@ def month_end_csv():
     year, month = _selected_month()
     report = reports.month_end_report(year, month, latest_prime())
     return Response(reports.transactions_csv(report), mimetype="text/csv",
-                    headers={"Content-Disposition": f'attachment; filename="{_slug()}mortgage-transactions-{year:04d}-{month:02d}.csv"'})
+                    headers={"Content-Disposition": f'attachment; filename="mortgage-transactions-{year:04d}-{month:02d}.csv"'})
 
 
 def _selected_year():
@@ -113,4 +105,4 @@ def annual_xlsx():
     year = _selected_year()
     data = reports.annual_workbook(reports.annual_report(year, latest_prime()), prepared_by=g.user.display_name)
     return Response(data, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    headers={"Content-Disposition": f'attachment; filename="{_slug()}mortgage-income-{year}.xlsx"'})
+                    headers={"Content-Disposition": f'attachment; filename="mortgage-income-{year}.xlsx"'})

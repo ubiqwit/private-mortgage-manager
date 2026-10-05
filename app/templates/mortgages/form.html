@@ -1,12 +1,13 @@
 {% extends "base.html" %}
-{% macro field(name, label, type='text', col='col-md-4', help=None, step=None, required=False, value=None) %}
+{% macro field(name, label, type='text', col='col-md-4', help=None, step=None, required=False, value=None, options=None) %}
   {% if name in show %}
   {% set v = value if value is not none else m[name] %}
   <div class="{{ col }}">
     <label class="form-label small mb-1" for="f_{{ name }}">{{ label }}{% if required %} <span class="text-danger">*</span>{% endif %}</label>
     <input class="form-control form-control-sm" id="f_{{ name }}" name="{{ name }}" type="{{ type }}"
-      {% if step %}step="{{ step }}"{% endif %} {% if required %}required{% endif %}
+      {% if step %}step="{{ step }}"{% endif %} {% if required %}required{% endif %} {% if options %}list="dl_{{ name }}" autocomplete="off"{% endif %}
       value="{{ (v.isoformat() if v and type == 'date' else v) if v is not none else '' }}">
+    {% if options %}<datalist id="dl_{{ name }}">{% for o in options %}<option value="{{ o }}">{% endfor %}</datalist>{% endif %}
     {% if help %}<div class="form-text">{{ help }}</div>{% endif %}
   </div>
   {% endif %}
@@ -80,6 +81,7 @@
     {{ field('term_months', 'Term (months)', 'number', 'col-md-3') }}
     {{ field('maturity_date', 'Maturity date', 'date', 'col-md-3', help='Blank = funded date + term') }}
     {{ field('ownership_pct', 'Your share (%)', 'number', 'col-md-3', help='Less than 100 if syndicated', step='0.01') }}
+    {{ field('owners', 'Owners', col='col-md-6', options=owner_names, help='Who owns or funded this mortgage, e.g. "9929916 Canada Inc" or "Sal & Suresh 50-50"') }}
     {{ select('status', 'Status', statuses, col='col-md-3') }}
   </div>
   {% endif %}

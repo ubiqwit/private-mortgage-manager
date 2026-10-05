@@ -63,35 +63,9 @@ class TimestampMixin:
     updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 
 
-def _current_company_id():
-    """Default for company_id columns: the company the signed-in user is working in."""
-    from .tenancy import current_company_id
-
-    return current_company_id()
-
-
-user_company = db.Table(
-    "user_company",
-    db.Column("user_id", db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), primary_key=True),
-    db.Column("company_id", db.Integer, db.ForeignKey("company.id", ondelete="CASCADE"), primary_key=True),
-)
-
-
-class Company(TimestampMixin, db.Model):
-    """A lending entity (e.g. a holding company). Mortgages, statements, reports and
-    closed months belong to one company; users switch between the companies they manage."""
-
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(200), unique=True, nullable=False)
-
-
 class Mortgage(TimestampMixin, db.Model):
-    __table_args__ = (db.UniqueConstraint("company_id", "reference", name="uq_mortgage_company_reference"),)
-
     id = db.Column(db.Integer, primary_key=True)
-    company_id = db.Column(db.Integer, db.ForeignKey("company.id"), nullable=False, index=True,
-                           default=_current_company_id)
-    reference = db.Column(db.String(40), nullable=False)
+    reference = db.Column(db.String(40), unique=True, nullable=False)
 
     # Borrower
     borrower_name = db.Column(db.String(200), nullable=False)
@@ -126,6 +100,7 @@ class Mortgage(TimestampMixin, db.Model):
     term_months = db.Column(db.Integer)
     maturity_date = db.Column(db.Date, nullable=False)
     ownership_pct = db.Column(db.Numeric(6, 2), default=100)  # your share if syndicated
+    owners = db.Column(db.String(300))  # who owns / funded it, e.g. "9929916 Canada Inc" or "Sal & Suresh 50-50"
 
     # Fees & parties
     lender_fee = db.Column(db.Numeric(12, 2), default=0)
@@ -469,8 +444,6 @@ class TermHistory(db.Model):
 
 class StatementImport(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    company_id = db.Column(db.Integer, db.ForeignKey("company.id"), nullable=False, index=True,
-                           default=_current_company_id)
     filename = db.Column(db.String(255), nullable=False)
     account_name = db.Column(db.String(120))
     imported_at = db.Column(db.DateTime, default=utcnow, nullable=False)
@@ -483,17 +456,13 @@ class StatementImport(db.Model):
 
 
 class BankTransaction(db.Model):
-    __table_args__ = (db.UniqueConstraint("company_id", "fingerprint", name="uq_bank_transaction_company_fingerprint"),)
-
     id = db.Column(db.Integer, primary_key=True)
-    company_id = db.Column(db.Integer, db.ForeignKey("company.id"), nullable=False, index=True,
-                           default=_current_company_id)
     statement_id = db.Column(db.Integer, db.ForeignKey("statement_import.id"), nullable=False, index=True)
     account_name = db.Column(db.String(120))
     date = db.Column(db.Date, nullable=False, index=True)
     description = db.Column(db.String(500), nullable=False, default="")
     amount = db.Column(db.Numeric(14, 2), nullable=False)  # + deposit / - withdrawal
-    fingerprint = db.Column(db.String(64), nullable=False)  # unique per company
+    fingerprint = db.Column(db.String(64), unique=True, nullable=False)
     status = db.Column(db.String(20), default="unmatched", nullable=False, index=True)  # unmatched|matched|ignored
     created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
 
@@ -573,7 +542,6 @@ class User(TimestampMixin, db.Model):
     active = db.Column(db.Boolean, nullable=False, default=True)
     last_login_at = db.Column(db.DateTime)
     form_fields = db.Column(db.Text)  # JSON list of mortgage-form fields shown; NULL = all
-    companies = db.relationship("Company", secondary=user_company, order_by="Company.name")
 
     def set_password(self, password: str):
         import secrets
@@ -593,12 +561,6 @@ class User(TimestampMixin, db.Model):
     @property
     def is_admin(self):
         return self.role == "admin"
-
-    def accessible_companies(self):
-        """Admins manage every company; others only the ones they're assigned to."""
-        if self.is_admin:
-            return Company.query.order_by(Company.name).all()
-        return list(self.companies)
 
     @property
     def can_edit(self):

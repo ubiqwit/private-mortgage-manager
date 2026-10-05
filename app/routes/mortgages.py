@@ -22,7 +22,6 @@ from ..models import (
 from ..services import calc, ledger, matching
 from ..services.market import latest_prime
 from ..services.periods import PeriodClosed, ensure_open
-from ..tenancy import get_owned_or_404
 from ..timeutil import today as local_today
 
 bp = Blueprint("mortgages", __name__, url_prefix="/mortgages")
@@ -36,7 +35,7 @@ DATE_FIELDS = ["appraisal_date", "funded_date", "first_payment_date", "maturity_
 TEXT_FIELDS = [
     "reference", "borrower_name", "borrower_email", "borrower_phone", "guarantors", "property_address",
     "property_city", "property_province", "property_type", "pin", "rate_type", "compounding", "payment_type",
-    "payment_frequency", "broker_name", "lawyer_name", "prepayment_terms", "property_tax_status", "status",
+    "payment_frequency", "owners", "broker_name", "lawyer_name", "prepayment_terms", "property_tax_status", "status",
     "match_keywords", "notes",
 ]
 REQUIRED = {
@@ -46,6 +45,12 @@ REQUIRED = {
     "interest_rate": "Interest rate",
     "funded_date": "Funded date",
 }
+
+
+def owner_names():
+    """Every owners value in use, for the list filter and the form's suggestions."""
+    rows = db.session.query(Mortgage.owners).filter(Mortgage.owners.isnot(None), Mortgage.owners != "").distinct()
+    return sorted((name for (name,) in rows), key=str.lower)
 
 
 class FormError(ValueError):
@@ -123,6 +128,7 @@ def form_context(m):
     preset = form_fields.preset_name(g.user)
     return dict(
         show=show,
+        owner_names=owner_names(),
         section_shown={name: any(f in show for f, _ in fields) for name, fields in form_fields.GROUPS},
         preset_label=form_fields.PRESETS[preset][0] if preset else None,
         m=m,
@@ -148,7 +154,11 @@ def index():
         q = q.filter(or_(
             Mortgage.borrower_name.ilike(like), Mortgage.property_address.ilike(like),
             Mortgage.reference.ilike(like), Mortgage.property_city.ilike(like), Mortgage.broker_name.ilike(like),
+            Mortgage.owners.ilike(like),
         ))
+    owner = request.args.get("owner", "").strip()
+    if owner:
+        q = q.filter(Mortgage.owners == owner)
     sort = request.args.get("sort", "maturity")
     order = {
         "maturity": Mortgage.maturity_date,
@@ -169,7 +179,7 @@ def index():
         arrears=sum((r["arrears"] for r in rows), Decimal(0)),
     )
     return render_template("mortgages/index.html", rows=rows, totals=totals, status=status, search=search,
-                           sort=sort, statuses=STATUSES)
+                           sort=sort, statuses=STATUSES, owner=owner, owner_names=owner_names())
 
 
 @bp.route("/new", methods=["GET", "POST"])
@@ -200,7 +210,7 @@ def new():
 
 @bp.route("/<int:mortgage_id>/edit", methods=["GET", "POST"])
 def edit(mortgage_id):
-    m = get_owned_or_404(Mortgage, mortgage_id)
+    m = db.get_or_404(Mortgage, mortgage_id)
     if request.method == "POST":
         try:
             with db.session.no_autoflush:
@@ -208,7 +218,7 @@ def edit(mortgage_id):
         except FormError as exc:
             db.session.rollback()
             flash(str(exc), "danger")
-            m = get_owned_or_404(Mortgage, mortgage_id)
+            m = db.get_or_404(Mortgage, mortgage_id)
             return render_template("mortgages/form.html", **form_context(m)), 400
         audit("mortgage_updated", m.reference)
         db.session.commit()
@@ -219,7 +229,7 @@ def edit(mortgage_id):
 
 @bp.route("/<int:mortgage_id>/delete", methods=["POST"])
 def delete(mortgage_id):
-    m = get_owned_or_404(Mortgage, mortgage_id)
+    m = db.get_or_404(Mortgage, mortgage_id)
     if request.form.get("confirm") != m.reference:
         flash(f"Type {m.reference} to confirm deletion.", "warning")
         return redirect(url_for("mortgages.detail", mortgage_id=m.id))
@@ -240,7 +250,7 @@ def delete(mortgage_id):
 
 @bp.route("/<int:mortgage_id>")
 def detail(mortgage_id):
-    m = get_owned_or_404(Mortgage, mortgage_id)
+    m = db.get_or_404(Mortgage, mortgage_id)
     prime = latest_prime()
     year_start = date(local_today().year, 1, 1)
     stats = dict(
@@ -268,7 +278,7 @@ def detail(mortgage_id):
 
 @bp.route("/<int:mortgage_id>/schedule")
 def schedule(mortgage_id):
-    m = get_owned_or_404(Mortgage, mortgage_id)
+    m = db.get_or_404(Mortgage, mortgage_id)
     prime = latest_prime()
     rows = m.schedule(prime)
     totals = dict(
@@ -282,7 +292,7 @@ def schedule(mortgage_id):
 @bp.route("/<int:mortgage_id>/split")
 def split(mortgage_id):
     """JSON helper used by the payment form to pre-fill the split."""
-    m = get_owned_or_404(Mortgage, mortgage_id)
+    m = db.get_or_404(Mortgage, mortgage_id)
     try:
         amount = parse_decimal(request.args.get("amount"), "Amount") or Decimal(0)
         on = parse_date(request.args.get("date"), "Date") or local_today()
@@ -327,7 +337,7 @@ def transaction_from_form(m, form, txn=None):
 
 @bp.route("/<int:mortgage_id>/transactions", methods=["POST"])
 def add_transaction(mortgage_id):
-    m = get_owned_or_404(Mortgage, mortgage_id)
+    m = db.get_or_404(Mortgage, mortgage_id)
     try:
         with db.session.no_autoflush:
             txn = transaction_from_form(m, request.form)
@@ -348,7 +358,7 @@ def add_transaction(mortgage_id):
 
 @bp.route("/transactions/<int:txn_id>/delete", methods=["POST"])
 def delete_transaction(txn_id):
-    txn = get_owned_or_404(MortgageTransaction, txn_id)
+    txn = db.get_or_404(MortgageTransaction, txn_id)
     m = txn.mortgage
     bank = txn.bank_transaction
     try:
@@ -373,7 +383,7 @@ def delete_transaction(txn_id):
 @bp.route("/<int:mortgage_id>/renew", methods=["POST"])
 def renew(mortgage_id):
     """Renew / change terms from an effective date. Earlier periods keep their old terms."""
-    m = get_owned_or_404(Mortgage, mortgage_id)
+    m = db.get_or_404(Mortgage, mortgage_id)
     f = request.form
     try:
         effective = parse_date(f.get("effective_date"), "Effective date") or m.maturity_date
@@ -429,7 +439,7 @@ def renew(mortgage_id):
 
 @bp.route("/<int:mortgage_id>/renew/undo", methods=["POST"])
 def undo_renewal(mortgage_id):
-    m = get_owned_or_404(Mortgage, mortgage_id)
+    m = db.get_or_404(Mortgage, mortgage_id)
     if not m.term_history:
         flash("There is no renewal to undo.", "warning")
         return redirect(url_for("mortgages.detail", mortgage_id=m.id))
@@ -455,7 +465,7 @@ def undo_renewal(mortgage_id):
 
 @bp.route("/transactions/<int:txn_id>/edit", methods=["GET", "POST"])
 def edit_transaction(txn_id):
-    txn = get_owned_or_404(MortgageTransaction, txn_id)
+    txn = db.get_or_404(MortgageTransaction, txn_id)
     m = txn.mortgage
     if request.method == "POST":
         old_date, old_amount = txn.date, calc.money(txn.amount)

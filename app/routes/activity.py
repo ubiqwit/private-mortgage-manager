@@ -5,7 +5,6 @@ from flask import Blueprint, flash, g, redirect, render_template, request, url_f
 
 from .. import db
 from ..models import ACTIVITY_KINDS, OPEN_STATUSES, Mortgage, MortgageActivity, audit
-from ..tenancy import get_owned_or_404
 from ..timeutil import today as local_today
 
 bp = Blueprint("activity", __name__, url_prefix="/mortgages")
@@ -20,7 +19,7 @@ def _back(m):
 
 @bp.route("/<int:mortgage_id>/activity", methods=["POST"])
 def add(mortgage_id):
-    m = get_owned_or_404(Mortgage, mortgage_id)
+    m = db.get_or_404(Mortgage, mortgage_id)
     body = (request.form.get("body") or "").strip()
     if not body:
         flash("Write something for the activity entry.", "warning")
@@ -43,7 +42,7 @@ def add(mortgage_id):
 
 @bp.route("/activity/<int:activity_id>/done", methods=["POST"])
 def toggle_done(activity_id):
-    a = get_owned_or_404(MortgageActivity, activity_id)
+    a = db.get_or_404(MortgageActivity, activity_id)
     a.done = not a.done
     db.session.commit()
     return _back(a.mortgage)
@@ -51,7 +50,7 @@ def toggle_done(activity_id):
 
 @bp.route("/activity/<int:activity_id>/delete", methods=["POST"])
 def delete(activity_id):
-    a = get_owned_or_404(MortgageActivity, activity_id)
+    a = db.get_or_404(MortgageActivity, activity_id)
     m = a.mortgage
     audit("activity_deleted", f"{m.reference}: {a.kind} from {a.created_at:%Y-%m-%d}")
     db.session.delete(a)

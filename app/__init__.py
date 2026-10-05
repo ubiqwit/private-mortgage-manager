@@ -5,7 +5,7 @@ import warnings
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-from flask import Flask, abort, g, redirect, render_template, request, session, url_for
+from flask import Flask, abort, g, redirect, request, session, url_for
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from markupsafe import Markup
@@ -25,9 +25,7 @@ MIGRATIONS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__
 # Endpoints reachable without signing in.
 PUBLIC_ENDPOINTS = {"auth.login", "static", "health"}
 # POST endpoints a read-only user (e.g. your accountant) may still use.
-# Usable before a user has been given access to any company.
-NO_COMPANY_ENDPOINTS = {"auth.logout", "auth.change_password", "auth.login", "health"}
-VIEWER_POST_ENDPOINTS = {"companies.switch", "auth.logout", "auth.change_password", "market.refresh"}
+VIEWER_POST_ENDPOINTS = {"auth.logout", "auth.change_password", "market.refresh"}
 
 
 def _database_url(instance_path):
@@ -88,9 +86,6 @@ def create_app(test_config=None):
     migrate.init_app(app, db, directory=MIGRATIONS_DIR, render_as_batch=True)
 
     from . import models  # noqa: F401  (register models)
-    from .tenancy import install_scoping
-
-    install_scoping()
 
     with app.app_context():
         if app.config.get("TESTING"):
@@ -129,6 +124,7 @@ def create_app(test_config=None):
     def start_keepalive():
         keepalive.start(app)
 
+    from flask import render_template
 
     @app.errorhandler(400)
     @app.errorhandler(403)
@@ -226,8 +222,6 @@ def _register_filters(app):
             "blueprints_loaded": set(app.blueprints),
             "current_user": g.get("user"),
             "csrf_token": csrf_token,
-            "current_company": g.get("company"),
-            "my_companies": g.user.accessible_companies() if g.get("user") else [],
             "csrf_field": csrf_field,
         }
 
@@ -259,16 +253,6 @@ def _register_security(app):
 
         if request.endpoint not in PUBLIC_ENDPOINTS and g.user is None:
             return redirect(url_for("auth.login", next=request.full_path.rstrip("?")))
-
-        # Which company this request works in (see app/tenancy.py).
-        g.company = g.company_id = None
-        if g.user is not None and request.endpoint != "static":
-            from .tenancy import select_company_for
-
-            g.company = select_company_for(g.user)
-            g.company_id = g.company.id if g.company else None
-            if g.company is None and request.endpoint not in NO_COMPANY_ENDPOINTS:
-                return render_template("no_company.html"), 403
 
         if request.method in ("POST", "PUT", "PATCH", "DELETE"):
             if app.config.get("WTF_CSRF_ENABLED", True):
