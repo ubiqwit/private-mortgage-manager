@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Delete {{ target_user.email }} — Private Mortgage Manager{% endblock %}
+{% block content %}
+<a href="{{ url_for('auth.users') }}" class="small text-decoration-none"><i class="bi bi-arrow-left"></i> Users &amp; data</a>
+<h1 class="h3">Delete {{ target_user.display_name }}</h1>
+<div class="card p-4" style="max-width:760px">
+  {% if blocked %}
+    <div class="alert alert-warning mb-3">
+      <strong>{{ target_user.email }} can't be deleted yet.</strong> Some of the mortgages they added have history in months
+      you've closed, and deleting them would change reports you've already sent:
+      <ul class="mb-0 mt-2">{% for m, problem in blocked %}
+        <li><a href="{{ url_for('mortgages.detail', mortgage_id=m.id) }}">{{ m.reference }}</a> — {{ m.property_address }}</li>
+      {% endfor %}</ul>
+    </div>
+    <p class="small text-secondary mb-0">Reopen those months under <a href="{{ url_for('reports.month_end') }}">Reports</a> first,
+      or untick <em>Active</em> on the Users page to stop them signing in while keeping everything.</p>
+  {% else %}
+    <p>This permanently deletes the login <strong>{{ target_user.email }}</strong>
+      {% if mortgages %}and <strong>the {{ mortgages|length }} mortgage{{ '' if mortgages|length == 1 else 's' }} they added</strong>,
+      with all their transactions, documents, notes and term history{% endif %}. It can't be undone.</p>
+    {% if mortgages %}
+    <div class="table-responsive mb-3" style="max-height:320px">
+      <table class="table table-sm mb-0">
+        <thead class="table-light"><tr><th>Ref</th><th>Property</th><th>Borrower</th><th class="num">Balance</th><th>Status</th></tr></thead>
+        <tbody>{% for m in mortgages %}
+          <tr><td class="text-nowrap"><a href="{{ url_for('mortgages.detail', mortgage_id=m.id) }}">{{ m.reference }}</a></td>
+            <td>{{ m.property_address }}</td><td>{{ m.borrower_name }}</td><td class="num">{{ m.balance()|money }}</td>
+            <td><span class="badge badge-status-{{ m.display_status }}">{{ m.display_status_label }}</span></td></tr>
+        {% endfor %}</tbody>
+      </table>
+    </div>
+    <p class="small text-secondary">Bank lines matched to these mortgages go back to the unmatched queue. Mortgages other people
+      added stay, and the activity log keeps its entries (without their name).</p>
+    {% else %}
+    <p class="small text-secondary">They haven't added any mortgages, so no mortgages will be deleted.</p>
+    {% endif %}
+    <form method="post" class="d-flex flex-wrap gap-2 align-items-center">{{ csrf_field() }}
+      <input name="confirm" class="form-control form-control-sm" style="max-width:320px" autocomplete="off"
+        placeholder="Type {{ target_user.email }} to confirm" aria-label="Type the email to confirm" required>
+      <button class="btn btn-sm btn-danger"><i class="bi bi-trash"></i> Delete user{{ ' and mortgages' if mortgages else '' }}</button>
+      <a class="btn btn-sm btn-link" href="{{ url_for('auth.users') }}">Cancel</a>
+    </form>
+  {% endif %}
+</div>
+{% endblock %}

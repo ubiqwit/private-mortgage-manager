@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
 from dateutil.relativedelta import relativedelta
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, flash, g, jsonify, redirect, render_template, request, url_for
 from sqlalchemy import or_
 
 from .. import db
@@ -118,8 +118,6 @@ def apply_form(m: Mortgage, form):
 
 
 def form_context(m):
-    from flask import g
-
     from ..services import form_fields
 
     show = form_fields.visible_fields(g.user)
@@ -212,6 +210,7 @@ def new():
             return render_template("mortgages/form.html", **form_context(m)), 400
         if owners is not None:
             mortgagees.assign(m, owners)
+        m.created_by = g.user
         db.session.add(m)
         if request.form.get("record_lender_fee") and m.lender_fee:
             # Lender fees are usually deducted from the advance, so they are income on the funding date.
@@ -251,20 +250,18 @@ def edit(mortgage_id):
 
 @bp.route("/<int:mortgage_id>/delete", methods=["POST"])
 def delete(mortgage_id):
+    from ..services.deletion import closed_month_problem, delete_mortgage
+
     m = db.get_or_404(Mortgage, mortgage_id)
     if request.form.get("confirm") != m.reference:
         flash(f"Type {m.reference} to confirm deletion.", "warning")
         return redirect(url_for("mortgages.detail", mortgage_id=m.id))
-    try:
-        ensure_open(*(t.date for t in m.transactions), m.funded_date, action="delete a mortgage with history in closed months")
-    except PeriodClosed as exc:
-        flash(str(exc) + " Set its status to Paid out instead.", "danger")
+    problem = closed_month_problem(m)
+    if problem:
+        flash(problem + " Set its status to Paid out instead.", "danger")
         return redirect(url_for("mortgages.detail", mortgage_id=m.id))
-    for t in m.transactions:
-        if t.bank_transaction is not None:
-            t.bank_transaction.status = "unmatched" if len(t.bank_transaction.mortgage_transactions) <= 1 else "matched"
     audit("mortgage_deleted", f"{m.reference} {m.borrower_name}")
-    db.session.delete(m)
+    delete_mortgage(m)
     db.session.commit()
     flash(f"Deleted {m.reference}.", "success")
     return redirect(url_for("mortgages.index"))
@@ -556,6 +553,7 @@ def import_book():
                 errors.append((n, form.get("borrower_name") or "?", str(exc)))
                 continue
             refs.add(m.reference)
+            m.created_by = g.user
             created.append((m, adjustment))
     if errors:
         db.session.rollback()

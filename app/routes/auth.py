@@ -156,6 +156,33 @@ def update_user(user_id):
     return redirect(url_for("auth.users"))
 
 
+@bp.route("/users/<int:user_id>/delete", methods=["GET", "POST"])
+def delete_user(user_id):
+    """Admin: delete a login and every mortgage that user added (after typing their email)."""
+    _require_admin()
+    from ..services import deletion
+
+    user = db.get_or_404(User, user_id)
+    if user.id == g.user.id:
+        flash("You can't delete your own account.", "warning")
+        return redirect(url_for("auth.users"))
+    mortgages = deletion.mortgages_added_by(user)
+    blocked = [(m, problem) for m in mortgages if (problem := deletion.closed_month_problem(m))]
+    if request.method == "POST" and not blocked:
+        if request.form.get("confirm", "").strip().lower() != user.email:
+            flash(f"Type {user.email} to confirm.", "warning")
+        else:
+            email = user.email
+            refs = ", ".join(m.reference for m in mortgages)
+            n = deletion.delete_user(user)
+            audit("user_deleted", f"{email} and {n} mortgage(s) they added" + (f": {refs}" if refs else ""))
+            db.session.commit()
+            flash(f"Deleted {email}" + (f" and the {n} mortgage{'s' if n != 1 else ''} they added." if n else "."),
+                  "success")
+            return redirect(url_for("auth.users"))
+    return render_template("auth/delete_user.html", target_user=user, mortgages=mortgages, blocked=blocked)
+
+
 @bp.route("/export/all.xlsx")
 def export_all():
     """Admin-only full backup of the data as an Excel workbook."""

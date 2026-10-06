@@ -22,8 +22,9 @@
             <td class="small">{{ u.last_login_at|local if u.last_login_at else 'never' }}</td>
             <td><input type="password" name="password" form="uf{{ u.id }}" class="form-control form-control-sm" placeholder="leave blank" autocomplete="new-password"></td>
             <td class="text-nowrap"><a class="small" href="{{ url_for('auth.user_form_fields', user_id=u.id) }}"><i class="bi bi-sliders"></i> Fields</a></td>
-            <td><form id="uf{{ u.id }}" method="post" action="{{ url_for('auth.update_user', user_id=u.id) }}">{{ csrf_field() }}
-              <button class="btn btn-sm btn-outline-primary">Save</button></form></td>
+            <td class="text-nowrap"><form id="uf{{ u.id }}" method="post" action="{{ url_for('auth.update_user', user_id=u.id) }}" class="d-inline">{{ csrf_field() }}
+              <button class="btn btn-sm btn-outline-primary">Save</button></form>
+              {% if u.id != current_user.id %}<a class="btn btn-sm btn-outline-danger" href="{{ url_for('auth.delete_user', user_id=u.id) }}" title="Delete {{ u.email }}"><i class="bi bi-trash"></i></a>{% endif %}</td>
           </tr>
         {% endfor %}
         </tbody>

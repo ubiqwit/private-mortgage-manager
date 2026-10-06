@@ -95,7 +95,9 @@ See `.env.example` for a template.
 * **editor** — add, change and delete mortgages, transactions and statements.
 * **viewer** — read-only; ideal for your accountant to pull reports themselves.
 
-Five failed sign-ins lock an account for 15 minutes; changing a password signs out every
+Each mortgage records who added it. An admin can delete a user from the Users page, which also
+deletes every mortgage that user added (after typing their email to confirm); to just stop someone
+signing in, untick *Active* instead. Five failed sign-ins lock an account for 15 minutes; changing a password signs out every
 other device; the Users page shows the audit log. From a shell:
 
 ```bash

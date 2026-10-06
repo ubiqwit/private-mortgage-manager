@@ -60,12 +60,11 @@ def has_demo() -> bool:
 
 
 def remove_demo() -> int:
+    from .deletion import delete_mortgage
+
     mortgages = Mortgage.query.filter(Mortgage.reference.like(f"{PREFIX}%")).all()
     for m in mortgages:
-        for t in m.transactions:
-            if t.bank_transaction is not None:  # matched demo lines go back to the queue
-                t.bank_transaction.status = "unmatched"
-        db.session.delete(m)
+        delete_mortgage(m)
     return len(mortgages)
 
 
@@ -115,7 +114,7 @@ def load_demo(today: date, count: int = 20, user=None, seed: int = 7) -> int:
                     else f"{FIRST[i % len(FIRST)]} {LAST[(i * 3) % len(LAST)]}")
         city = CITIES[(i * 5) % len(CITIES)]
         m = Mortgage(
-            reference=f"{PREFIX}{i + 1:02d}", borrower_name=borrower,
+            reference=f"{PREFIX}{i + 1:02d}", borrower_name=borrower, created_by=user,
             borrower_email=f"{borrower.split()[0].lower()}@example.com", borrower_phone=f"416-555-{1000 + i * 37:04d}",
             property_address=f"{rnd.randint(2, 980)} {STREETS[(i * 3 + i // 5) % len(STREETS)]}", property_city=city,
             property_province="ON", property_type=ptype, property_value=value, appraisal_date=funded - timedelta(days=20),

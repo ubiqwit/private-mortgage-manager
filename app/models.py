@@ -115,6 +115,8 @@ class Mortgage(TimestampMixin, db.Model):
     status = db.Column(db.String(20), default="active", nullable=False)
     match_keywords = db.Column(db.Text)  # one per line; used to match bank deposits
     notes = db.Column(db.Text)
+    # Who added it. Deleting that user deletes their mortgages too (see services.deletion).
+    created_by_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), index=True)
 
     transactions = db.relationship(
         "MortgageTransaction",
@@ -140,6 +142,7 @@ class Mortgage(TimestampMixin, db.Model):
         cascade="all, delete-orphan",
         order_by="MortgageDocument.uploaded_at.desc()",
     )
+    created_by = db.relationship("User", foreign_keys=[created_by_id])
     mortgagees = db.relationship(
         "Mortgagee",
         back_populates="mortgage",

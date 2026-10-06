@@ -6,7 +6,7 @@ from app import create_app, db
 
 # Tables added by migrations after the baseline revision (keep in sync when adding tables).
 POST_BASELINE_TABLES = ["term_history", "mortgage_document", "mortgage_activity", "mortgagee"]
-POST_BASELINE_COLUMNS = [("user", "form_fields")]
+POST_BASELINE_COLUMNS = [("user", "form_fields"), ("mortgage", "created_by_id")]
 
 
 def test_migrations_match_models(tmp_path):
@@ -30,9 +30,18 @@ def test_legacy_database_without_migration_history_is_adopted(tmp_path):
     with legacy.app_context():
         for table in POST_BASELINE_TABLES:  # didn't exist back then
             db.session.execute(sa.text(f"DROP TABLE {table}"))
-        for table, column in POST_BASELINE_COLUMNS:
-            db.session.execute(sa.text(f'ALTER TABLE "{table}" DROP COLUMN {column}'))
         db.session.commit()
+        # Batch mode rebuilds the table, so indexed / foreign-key columns can go too.
+        from alembic.operations import Operations
+
+        with db.engine.begin() as conn:
+            ops = Operations(MigrationContext.configure(conn))
+            for table, column in POST_BASELINE_COLUMNS:
+                index = f"ix_{table}_{column}"
+                with ops.batch_alter_table(table) as batch:
+                    if any(i["name"] == index for i in sa.inspect(conn).get_indexes(table)):
+                        batch.drop_index(index)
+                    batch.drop_column(column)
     app = create_app({"SECRET_KEY": "t", "SQLALCHEMY_DATABASE_URI": url, "MARKET_FETCH_ENABLED": False})
     with app.app_context():
         assert set(POST_BASELINE_TABLES) <= set(sa.inspect(db.engine).get_table_names())

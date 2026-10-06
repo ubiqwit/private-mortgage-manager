@@ -110,6 +110,7 @@
         {{ row('Renewal fee', m.renewal_fee|money if m.renewal_fee else none) }}
         {{ row('NSF fee', m.nsf_fee|money if m.nsf_fee else none) }}
         {{ row('Bank keywords', m.keywords|join(', ')) }}
+        {{ row('Added by', m.created_by.display_name if m.created_by else none) }}
       </table>
     </div>
     <div class="card mb-3" id="documents"><div class="card-header bg-white fw-semibold">Documents <span class="badge text-bg-light">{{ m.documents|length }}</span></div>
