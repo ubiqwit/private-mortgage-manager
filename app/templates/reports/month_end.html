@@ -69,7 +69,7 @@
     {% for row in r.rows %}
       <tr>
         <td class="text-nowrap"><a href="{{ url_for('mortgages.detail', mortgage_id=row.m.id) }}">{{ row.m.reference }}</a></td>
-        <td>{{ row.m.borrower_name }}{% if row.m.owners %}<div class="small text-secondary">{{ row.m.owners }}</div>{% endif %}</td>
+        <td>{{ row.m.borrower_name }}{% if row.m.mortgagees %}<div class="small text-secondary">{{ row.m.mortgagees_label }}</div>{% endif %}</td>
         <td class="num">{{ row.rate|pct }}</td>
         <td class="num">{{ row.opening|money }}</td>
         <td class="num">{{ row.principal|money }}{% if row.advances %}<div class="small text-secondary">+{{ row.advances|money }} advanced</div>{% endif %}</td>

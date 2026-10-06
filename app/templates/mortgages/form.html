@@ -24,6 +24,16 @@
   </div>
   {% endif %}
 {% endmacro %}
+{% macro mortgagee_row(name='', pct='') %}
+  <div class="row g-2 mb-2 mortgagee-row">
+    <div class="col-sm-7"><input name="mortgagee_name" value="{{ name }}" list="dl_mortgagees" autocomplete="off"
+      class="form-control form-control-sm" placeholder="Name, e.g. 9929916 Canada Inc" aria-label="Mortgagee name"></div>
+    <div class="col-8 col-sm-3"><div class="input-group input-group-sm">
+      <input name="mortgagee_pct" value="{{ pct }}" type="number" step="0.01" min="0" max="100" class="form-control"
+        placeholder="Share" aria-label="Share (%)"><span class="input-group-text">%</span></div></div>
+    <div class="col-auto"><button type="button" class="btn btn-sm btn-outline-danger remove-mortgagee" title="Remove"><i class="bi bi-x-lg"></i></button></div>
+  </div>
+{% endmacro %}
 {% block title %}{{ 'Edit ' ~ m.reference if m.id else 'New mortgage' }} — Private Mortgage Manager{% endblock %}
 {% block content %}
 <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3" style="max-width:1100px">
@@ -81,8 +91,22 @@
     {{ field('term_months', 'Term (months)', 'number', 'col-md-3') }}
     {{ field('maturity_date', 'Maturity date', 'date', 'col-md-3', help='Blank = funded date + term') }}
     {{ field('ownership_pct', 'Your share (%)', 'number', 'col-md-3', help='Less than 100 if syndicated', step='0.01') }}
-    {{ field('owners', 'Owners', col='col-md-6', options=owner_names, help='Who owns or funded this mortgage, e.g. "9929916 Canada Inc" or "Sal & Suresh 50-50"') }}
     {{ select('status', 'Status', statuses, col='col-md-3') }}
+    {% if 'mortgagees' in show %}
+    <div class="col-12" id="mortgagees">
+      <input type="hidden" name="mortgagees_form" value="1">
+      <div class="form-label small mb-1">Mortgagees <span class="text-secondary">— who owns this mortgage and their share</span></div>
+      <div id="mortgagee-rows" style="max-width:640px">
+        {% for name, pct in mortgagee_rows %}{{ mortgagee_row(name, pct) }}{% endfor %}
+        {% if not mortgagee_rows %}{{ mortgagee_row() }}{% endif %}
+      </div>
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="add-mortgagee"><i class="bi bi-plus-lg"></i> Add mortgagee</button>
+      <span class="small ms-2" id="mortgagee-total" aria-live="polite"></span>
+      <div class="form-text">Leave a share blank to give it whatever is left of 100%. Shares can't add up to more than 100%.</div>
+      <datalist id="dl_mortgagees">{% for o in mortgagee_names %}<option value="{{ o }}">{% endfor %}</datalist>
+      <template id="mortgagee-template">{{ mortgagee_row() }}</template>
+    </div>
+    {% endif %}
   </div>
   {% endif %}
 
@@ -133,4 +157,45 @@
     <a class="btn btn-outline-secondary" href="{{ url_for('mortgages.detail', mortgage_id=m.id) if m.id else url_for('mortgages.index') }}">Cancel</a>
   </div>
 </form>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const box = document.getElementById('mortgagees');
+  if (!box) return;
+  const rows = document.getElementById('mortgagee-rows');
+  const total = document.getElementById('mortgagee-total');
+  function update() {
+    let sum = 0, blanks = 0, named = 0;
+    rows.querySelectorAll('.mortgagee-row').forEach((r) => {
+      const name = r.querySelector('[name=mortgagee_name]').value.trim();
+      const pct = r.querySelector('[name=mortgagee_pct]').value.trim();
+      if (!name && !pct) return;
+      named += 1;
+      if (pct === '') blanks += 1; else sum += Number(pct);
+    });
+    if (!named) { total.textContent = ''; return; }
+    const shown = Math.round(sum * 100) / 100;
+    if (sum > 100.0001) { total.className = 'small ms-2 text-danger'; total.textContent = 'Total ' + shown + '% — more than 100%'; }
+    else if (blanks) { total.className = 'small ms-2 text-secondary'; total.textContent = 'Total ' + shown + '% + ' + blanks + ' blank (shares what is left)'; }
+    else if (sum < 99.9999) { total.className = 'small ms-2 text-warning-emphasis'; total.textContent = 'Total ' + shown + '% — ' + (Math.round((100 - sum) * 100) / 100) + '% not assigned'; }
+    else { total.className = 'small ms-2 text-success'; total.textContent = 'Total 100%'; }
+  }
+  document.getElementById('add-mortgagee').addEventListener('click', () => {
+    rows.appendChild(document.getElementById('mortgagee-template').content.cloneNode(true));
+    rows.lastElementChild.querySelector('input').focus();
+    update();
+  });
+  rows.addEventListener('click', (e) => {
+    const btn = e.target.closest('.remove-mortgagee');
+    if (!btn) return;
+    const row = btn.closest('.mortgagee-row');
+    if (rows.querySelectorAll('.mortgagee-row').length > 1) row.remove();
+    else row.querySelectorAll('input').forEach((i) => { i.value = ''; });
+    update();
+  });
+  rows.addEventListener('input', update);
+  update();
+})();
+</script>
 {% endblock %}

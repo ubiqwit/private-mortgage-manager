@@ -100,7 +100,6 @@ class Mortgage(TimestampMixin, db.Model):
     term_months = db.Column(db.Integer)
     maturity_date = db.Column(db.Date, nullable=False)
     ownership_pct = db.Column(db.Numeric(6, 2), default=100)  # your share if syndicated
-    owners = db.Column(db.String(300))  # who owns / funded it, e.g. "9929916 Canada Inc" or "Sal & Suresh 50-50"
 
     # Fees & parties
     lender_fee = db.Column(db.Numeric(12, 2), default=0)
@@ -141,6 +140,24 @@ class Mortgage(TimestampMixin, db.Model):
         cascade="all, delete-orphan",
         order_by="MortgageDocument.uploaded_at.desc()",
     )
+    mortgagees = db.relationship(
+        "Mortgagee",
+        back_populates="mortgage",
+        cascade="all, delete-orphan",
+        order_by="Mortgagee.sort_order",
+    )
+
+    @property
+    def mortgagees_label(self):
+        """e.g. "9929916 Canada Inc 50%, Suresh Malhotra 50%" ('' if none recorded)."""
+        return ", ".join(f"{o.name} {fmt_pct(o.share_pct)}" for o in self.mortgagees)
+
+    @property
+    def mortgagees_unassigned_pct(self):
+        """Share not yet assigned to a mortgagee (0 when complete or none recorded)."""
+        if not self.mortgagees:
+            return Decimal(0)
+        return max(Decimal(100) - sum((o.share_pct for o in self.mortgagees), Decimal(0)), Decimal(0))
 
     # ----- labels -------------------------------------------------------
     @property
@@ -383,6 +400,26 @@ DOCUMENT_CATEGORIES = [
     ("correspondence", "Correspondence"),
     ("other", "Other"),
 ]
+
+
+def fmt_pct(value) -> str:
+    """50 -> '50%', 33.70 -> '33.7%'."""
+    text = f"{Decimal(value):f}"
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text + "%"
+
+
+class Mortgagee(db.Model):
+    """Who owns (lent) a mortgage and their share of it."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    mortgage_id = db.Column(db.Integer, db.ForeignKey("mortgage.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = db.Column(db.String(200), nullable=False)
+    share_pct = db.Column(db.Numeric(6, 2), nullable=False)
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
+
+    mortgage = db.relationship("Mortgage", back_populates="mortgagees")
 
 
 class MortgageDocument(db.Model):

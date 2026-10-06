@@ -34,7 +34,7 @@
     <tbody>
     {% for row in r.rows %}
       <tr><td class="text-nowrap"><a href="{{ url_for('mortgages.detail', mortgage_id=row.m.id) }}">{{ row.m.reference }}</a></td>
-        <td>{{ row.m.borrower_name }}{% if row.m.owners %}<div class="small text-secondary">{{ row.m.owners }}</div>{% endif %}</td><td class="num">{{ row.opening|money }}</td><td class="num">{{ row.advances|money }}</td>
+        <td>{{ row.m.borrower_name }}{% if row.m.mortgagees %}<div class="small text-secondary">{{ row.m.mortgagees_label }}</div>{% endif %}</td><td class="num">{{ row.opening|money }}</td><td class="num">{{ row.advances|money }}</td>
         <td class="num">{{ row.principal|money }}</td><td class="num">{{ row.closing|money }}</td><td class="num">{{ row.interest|money }}</td>
         <td class="num">{{ row.fees|money }}</td><td class="num fw-semibold">{{ row.income|money }}</td>
         {% if r.has_syndicated %}<td class="num">{{ row.your_income|money }} <span class="small text-secondary">({{ row.share_pct|pct(0) }})</span></td>{% endif %}

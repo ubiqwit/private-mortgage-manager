@@ -193,6 +193,10 @@ def _register_filters(app):
             return "—"
         return f"{Decimal(str(value)):.{places}f}%"
 
+    from .models import fmt_pct
+
+    app.add_template_filter(fmt_pct, "share")  # 50 -> 50%, 33.70 -> 33.7%
+
     @app.template_filter("filesize")
     def filesize(n):
         n = n or 0

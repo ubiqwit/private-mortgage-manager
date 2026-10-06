@@ -10,6 +10,7 @@ from ..models import (
     BankTransaction,
     MarketObservation,
     Mortgage,
+    Mortgagee,
     MortgageTransaction,
     StatementImport,
     TermHistory,
@@ -20,6 +21,7 @@ from .safety import set_text_cell
 
 SHEETS = [
     ("Mortgages", Mortgage, None),
+    ("Mortgagees", Mortgagee, None),
     ("Transactions", MortgageTransaction, None),
     ("Term history", TermHistory, None),
     ("Bank lines", BankTransaction, None),

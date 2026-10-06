@@ -5,8 +5,8 @@ from alembic.migration import MigrationContext
 from app import create_app, db
 
 # Tables added by migrations after the baseline revision (keep in sync when adding tables).
-POST_BASELINE_TABLES = ["term_history", "mortgage_document", "mortgage_activity"]
-POST_BASELINE_COLUMNS = [("user", "form_fields"), ("mortgage", "owners")]
+POST_BASELINE_TABLES = ["term_history", "mortgage_document", "mortgage_activity", "mortgagee"]
+POST_BASELINE_COLUMNS = [("user", "form_fields")]
 
 
 def test_migrations_match_models(tmp_path):

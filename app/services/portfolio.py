@@ -114,7 +114,11 @@ def dashboard_stats(today: date | None = None, prime=None) -> dict:
         by_position[m.position_label + " mortgages"] += r["balance"]
         by_type[dict(PROPERTY_TYPES).get(m.property_type, "Other")] += r["balance"]
         by_city[(m.property_city or "Unknown").strip().title()] += r["balance"]
-        by_owner[(m.owners or "").strip() or "Not recorded"] += r["balance"]
+        for o in m.mortgagees:
+            by_owner[o.name] += r["balance"] * o.share_pct / 100
+        unassigned = 100 - sum((o.share_pct for o in m.mortgagees), ZERO)
+        if unassigned > 0:
+            by_owner["Not recorded"] += r["balance"] * unassigned / 100
         if r["cltv"] is None:
             ltv_unknown += r["balance"]
         else:
@@ -126,7 +130,7 @@ def dashboard_stats(today: date | None = None, prime=None) -> dict:
     if len(cities) > 6:
         cities = cities[:5] + [("Other", sum((v for _, v in cities[5:]), ZERO))]
 
-    owners = sorted(by_owner.items(), key=lambda kv: kv[1], reverse=True)
+    owners = sorted(((k, calc.money(v)) for k, v in by_owner.items()), key=lambda kv: kv[1], reverse=True)
     if len(owners) > 6:
         owners = owners[:5] + [("Other", sum((v for _, v in owners[5:]), ZERO))]
     if [name for name, _ in owners] == ["Not recorded"]:

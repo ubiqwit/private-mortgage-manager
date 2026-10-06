@@ -39,7 +39,7 @@ COLUMNS = [
     ("Term months", "term_months", "Term or maturity date required"),
     ("Maturity date", "maturity_date", "YYYY-MM-DD"),
     ("Your share %", "ownership_pct", "100 unless syndicated"),
-    ("Owners", "owners", "Who owns or funded it, e.g. 9929916 Canada Inc"),
+    ("Mortgagees", "_mortgagees", "Who owns it and their share, e.g. 9929916 Canada Inc 50%; Suresh Malhotra 50%"),
     ("Lender fee", "lender_fee", ""),
     ("Broker", "broker_name", ""),
     ("Broker fee", "broker_fee", ""),
@@ -53,6 +53,7 @@ COLUMNS = [
     ("Current balance", "_balance", "Optional — if principal has been repaid, the balance today"),
     ("Balance as of", "_balance_date", "Date of that balance (default today)"),
 ]
+ALIASES = {"Owners": "_mortgagees", "Lenders": "_mortgagees"}  # headers from older templates
 DATE_FIELDS = {"appraisal_date", "funded_date", "first_payment_date", "maturity_date", "insurance_expiry", "_balance_date"}
 
 def _key(text) -> str:
@@ -102,7 +103,7 @@ def template_workbook() -> bytes:
         ws.column_dimensions[get_column_letter(i)].width = max(14, len(h) + 4)
     ws.append(["", "Jane Smith", "jane@example.com", "416-555-0100", "12 Maple Ave", "Toronto", "ON", "Detached",
                1150000, "2026-01-10", 2, 610000, 250000, 10.99, "Fixed", "", "", "Monthly", "Interest only", "Monthly",
-               "", "", "2026-02-01", "2026-03-01", 12, "", 100, "Example Holdings Inc", 5000, "Example Brokerage", 2500, "", 1000, 300,
+               "", "", "2026-02-01", "2026-03-01", 12, "", 100, "Example Holdings Inc 60%; Jane Lender 40%", 5000, "Example Brokerage", 2500, "", 1000, 300,
                "2027-01-31", "Active", "E-TRANSFER JANE SMITH", "Example row — delete before importing", "", ""])
     ws.freeze_panes = "A2"
     help_ws = wb.create_sheet("Instructions")
@@ -145,6 +146,7 @@ def parse_rows(filename: str, content: bytes):
     header = [_key(h) for h in rows[0]]
     lookup = {_key(h): field for h, field, _ in COLUMNS}
     lookup.update({_key(field): field for _, field, _ in COLUMNS})
+    lookup.update({_key(alias): field for alias, field in ALIASES.items()})
     cols = {i: lookup[h] for i, h in enumerate(header) if h in lookup}
     if "borrower_name" not in cols.values() or "principal_amount" not in cols.values():
         raise st.StatementError("The first row must be the template's column headers (Borrower name, Principal, …).")

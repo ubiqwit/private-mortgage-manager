@@ -24,7 +24,7 @@ GROUPS = [
         ("compounding", "Compounding"), ("payment_type", "Payment type"), ("payment_frequency", "Payment frequency"),
         ("amortization_months", "Amortization"), ("payment_amount", "Payment amount"),
         ("funded_date", "Funded date"), ("first_payment_date", "First payment date"), ("term_months", "Term (months)"),
-        ("maturity_date", "Maturity date"), ("ownership_pct", "Your share (%)"), ("owners", "Owners"), ("status", "Status"),
+        ("maturity_date", "Maturity date"), ("ownership_pct", "Your share (%)"), ("mortgagees", "Mortgagees (who owns it, with %)"), ("status", "Status"),
     ]),
     ("Fees & parties", [
         ("lender_fee", "Lender fee"), ("renewal_fee", "Renewal fee"), ("nsf_fee", "NSF fee"),
@@ -38,7 +38,7 @@ ALL_FIELDS = [f for _, fields in GROUPS for f, _ in fields]
 # Always shown: the app can't create a mortgage without them.
 REQUIRED = {"borrower_name", "property_address", "principal_amount", "interest_rate", "funded_date", "term_months"}
 
-SIMPLE = REQUIRED | {"borrower_phone", "property_city", "property_value", "position", "lender_fee", "owners", "notes"}
+SIMPLE = REQUIRED | {"borrower_phone", "property_city", "property_value", "position", "lender_fee", "mortgagees", "notes"}
 STANDARD = SIMPLE | {
     "borrower_email", "property_type", "prior_charges", "rate_type", "prime_spread", "rate_floor", "payment_type",
     "payment_frequency", "amortization_months", "maturity_date", "status", "broker_name", "broker_fee",
@@ -60,6 +60,8 @@ def visible_fields(user) -> set[str]:
         chosen = set(json.loads(raw))
     except (ValueError, TypeError):
         return set(ALL_FIELDS)
+    if "owners" in chosen:  # the field's earlier name
+        chosen.add("mortgagees")
     return (chosen & set(ALL_FIELDS)) | REQUIRED
 
 

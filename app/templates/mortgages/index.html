@@ -13,7 +13,7 @@
 
 <form class="row g-2 mb-3" method="get">
   <div class="col-sm-5 col-lg-4">
-    <input name="q" value="{{ search }}" class="form-control" placeholder="Search borrower, address, reference, owner…">
+    <input name="q" value="{{ search }}" class="form-control" placeholder="Search address, borrower, mortgagee…">
   </div>
   <div class="col-auto">
     <select name="status" class="form-select" onchange="this.form.submit()">
@@ -24,17 +24,17 @@
       {% endfor %}
     </select>
   </div>
-  {% if owner_names %}
+  {% if mortgagee_names %}
   <div class="col-auto">
-    <select name="owner" class="form-select" onchange="this.form.submit()" aria-label="Owner">
-      <option value="">All owners</option>
-      {% for name in owner_names %}<option value="{{ name }}" {% if owner == name %}selected{% endif %}>{{ name }}</option>{% endfor %}
+    <select name="mortgagee" class="form-select" onchange="this.form.submit()" aria-label="Mortgagee">
+      <option value="">All mortgagees</option>
+      {% for name in mortgagee_names %}<option value="{{ name }}" {% if owner == name %}selected{% endif %}>{{ name }}</option>{% endfor %}
     </select>
   </div>
   {% endif %}
   <div class="col-auto">
     <select name="sort" class="form-select" onchange="this.form.submit()">
-      {% for value, label in [('maturity','Sort: maturity'),('reference','Sort: reference'),('borrower','Sort: borrower'),('rate','Sort: rate'),('principal','Sort: principal')] %}
+      {% for value, label in [('maturity','Sort: maturity'),('property','Sort: property'),('rate','Sort: rate'),('principal','Sort: principal')] %}
         <option value="{{ value }}" {% if sort == value %}selected{% endif %}>{{ label }}</option>
       {% endfor %}
     </select>
@@ -47,41 +47,44 @@
   <table class="table table-hover table-sm mb-0">
     <thead class="table-light">
       <tr>
-        <th>Ref</th><th>Borrower</th><th>Property</th><th>Pos.</th>
-        <th class="num">Balance</th><th class="num">Rate</th><th class="num">Payment</th>
-        <th class="num">CLTV</th><th>Next due</th><th>Maturity</th><th class="num">Arrears</th><th>Status</th>
+        <th>Property</th><th>Mortgagees</th><th>Pos.</th>
+        <th class="num">Original principal</th><th class="num">Balance</th><th class="num">Rate</th><th class="num">Payment</th>
+        <th class="num">CLTV</th><th>Maturity</th><th>Status</th>
       </tr>
     </thead>
     <tbody>
     {% for r in rows %}
       {% set m = r.m %}
       <tr onclick="location.href='{{ url_for('mortgages.detail', mortgage_id=m.id) }}'" style="cursor:pointer">
-        <td class="text-nowrap"><a href="{{ url_for('mortgages.detail', mortgage_id=m.id) }}">{{ m.reference }}</a></td>
-        <td>{{ m.borrower_name }}{% if m.owners %}<div class="small text-secondary"><i class="bi bi-person-badge"></i> {{ m.owners }}</div>{% endif %}</td>
-        <td class="small">{{ m.property_address }}{% if m.property_city %}, {{ m.property_city }}{% endif %}</td>
+        <td style="min-width:220px"><a href="{{ url_for('mortgages.detail', mortgage_id=m.id) }}">{{ m.property_address }}</a>{% if m.property_city %}<span class="text-secondary">, {{ m.property_city }}</span>{% endif %}</td>
+        <td class="small">{% for o in m.mortgagees %}<div class="text-nowrap">{{ o.name }} <span class="text-secondary">{{ o.share_pct|share }}</span></div>{% else %}<span class="text-secondary">—</span>{% endfor %}</td>
         <td>{{ m.position_label }}</td>
-        <td class="num">{{ r.balance|money }}</td>
+        <td class="num">{{ m.principal_amount|money }}</td>
+        <td class="num fw-semibold">{{ r.balance|money }}</td>
         <td class="num">{{ r.rate|pct }}{% if m.rate_type == 'variable' %} <span class="badge text-bg-info" title="Prime + {{ m.prime_spread }}">V</span>{% endif %}</td>
         <td class="num">{{ r.payment|money }} <span class="text-secondary small">{{ m.payment_frequency.replace('_',' ') }}</span></td>
         <td class="num">{% if not m.is_open %}—{% elif r.ltv and r.ltv > 80 %}<i class="bi bi-exclamation-octagon-fill status-critical" title="High combined LTV"></i> {% elif r.ltv and r.ltv > 75 %}<i class="bi bi-exclamation-triangle-fill status-warning" title="Elevated combined LTV"></i> {% endif %}{{ r.ltv|pct(1) if m.is_open else '' }}</td>
-        <td class="text-nowrap">{{ r.next_due|d }}</td>
         {% set dtm = m.days_to_maturity() %}
         <td class="text-nowrap">{% if not m.is_open %}{% elif dtm < 0 %}<i class="bi bi-exclamation-octagon-fill status-critical" title="Past maturity"></i> {% elif dtm < 90 %}<i class="bi bi-exclamation-triangle-fill status-warning" title="Matures within 90 days"></i> {% endif %}{{ m.maturity_date|d }}</td>
-        <td class="num {% if r.arrears > 0 %}text-danger fw-semibold{% endif %}">{{ r.arrears|money if r.arrears > 0 else '—' }}</td>
         <td><span class="badge badge-status-{{ m.display_status }}">{{ m.display_status_label }}</span></td>
       </tr>
     {% else %}
-      <tr><td colspan="12" class="text-center text-secondary py-5">
+      <tr><td colspan="10" class="text-center text-secondary py-5">
         No mortgages yet.{% if current_user.can_edit %} <a href="{{ url_for('mortgages.new') }}">Add your first one</a>.{% endif %}
       </td></tr>
     {% endfor %}
     </tbody>
     {% if rows %}
     <tfoot class="table-light fw-semibold">
-      <tr><td colspan="4">{{ rows|length }} mortgage{{ '' if rows|length == 1 else 's' }}</td>
+      <tr><td colspan="3">{{ rows|length }} mortgage{{ '' if rows|length == 1 else 's' }}</td>
+        <td class="num">{{ totals.principal|money }}</td>
         <td class="num">{{ totals.balance|money }}</td><td></td>
         <td class="num" title="Monthly equivalent">{{ totals.payment|money }}/mo</td>
-        <td colspan="3"></td><td class="num">{{ totals.arrears|money }}</td><td></td></tr>
+        <td colspan="3"></td></tr>
+      {% if owner %}
+      <tr class="fw-normal"><td colspan="4">{{ owner }}'s share of the balance</td>
+        <td class="num fw-semibold">{{ totals.owner_balance|money }}</td><td colspan="5"></td></tr>
+      {% endif %}
     </tfoot>
     {% endif %}
   </table>

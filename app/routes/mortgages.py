@@ -15,13 +15,16 @@ from ..models import (
     STATUSES,
     TXN_TYPES,
     Mortgage,
+    Mortgagee,
     MortgageTransaction,
     TermHistory,
     audit,
+    fmt_pct,
     next_reference,
 )
-from ..services import calc, ledger, matching
+from ..services import calc, ledger, matching, mortgagees
 from ..services.market import latest_prime
+from ..services.mortgagees import MortgageeError
 from ..services.periods import PeriodClosed, ensure_open
 from ..timeutil import today as local_today
 
@@ -36,7 +39,7 @@ DATE_FIELDS = ["appraisal_date", "funded_date", "first_payment_date", "maturity_
 TEXT_FIELDS = [
     "reference", "borrower_name", "borrower_email", "borrower_phone", "guarantors", "property_address",
     "property_city", "property_province", "property_type", "pin", "rate_type", "compounding", "payment_type",
-    "payment_frequency", "owners", "broker_name", "lawyer_name", "prepayment_terms", "property_tax_status", "status",
+    "payment_frequency", "broker_name", "lawyer_name", "prepayment_terms", "property_tax_status", "status",
     "match_keywords", "notes",
 ]
 REQUIRED = {
@@ -46,12 +49,6 @@ REQUIRED = {
     "interest_rate": "Interest rate",
     "funded_date": "Funded date",
 }
-
-
-def owner_names():
-    """Every owners value in use, for the list filter and the form's suggestions."""
-    rows = db.session.query(Mortgage.owners).filter(Mortgage.owners.isnot(None), Mortgage.owners != "").distinct()
-    return sorted((name for (name,) in rows), key=str.lower)
 
 
 class FormError(ValueError):
@@ -129,7 +126,12 @@ def form_context(m):
     preset = form_fields.preset_name(g.user)
     return dict(
         show=show,
-        owner_names=owner_names(),
+        mortgagee_names=mortgagees.names_in_use(),
+        mortgagee_rows=(
+            list(zip(request.form.getlist("mortgagee_name"), request.form.getlist("mortgagee_pct"), strict=False))
+            if request.method == "POST" and "mortgagees_form" in request.form
+            else [(o.name, fmt_pct(o.share_pct)[:-1]) for o in m.mortgagees]
+        ),
         section_shown={name: any(f in show for f, _ in fields) for name, fields in form_fields.GROUPS},
         preset_label=form_fields.PRESETS[preset][0] if preset else None,
         m=m,
@@ -161,16 +163,15 @@ def index():
         q = q.filter(or_(
             Mortgage.borrower_name.ilike(like), Mortgage.property_address.ilike(like),
             Mortgage.reference.ilike(like), Mortgage.property_city.ilike(like), Mortgage.broker_name.ilike(like),
-            Mortgage.owners.ilike(like),
+            Mortgage.mortgagees.any(Mortgagee.name.ilike(like)),
         ))
-    owner = request.args.get("owner", "").strip()
+    owner = request.args.get("mortgagee", "").strip()
     if owner:
-        q = q.filter(Mortgage.owners == owner)
+        q = q.filter(Mortgage.mortgagees.any(Mortgagee.name == owner))
     sort = request.args.get("sort", "maturity")
     order = {
         "maturity": Mortgage.maturity_date,
-        "reference": Mortgage.reference,
-        "borrower": Mortgage.borrower_name,
+        "property": Mortgage.property_address,
         "rate": Mortgage.interest_rate.desc(),
         "principal": Mortgage.principal_amount.desc(),
     }.get(sort, Mortgage.maturity_date)
@@ -181,16 +182,20 @@ def index():
         mortgages.sort(key=lambda m: rank.get(m.display_status, 0))
     rows = [
         dict(m=m, balance=m.balance(), rate=m.effective_rate(prime), payment=m.regular_payment(prime),
-             arrears=m.arrears(prime=prime), ltv=m.combined_ltv(), next_due=m.next_due_date())
+             ltv=m.combined_ltv())
         for m in mortgages
     ]
     totals = dict(
+        principal=sum((r["m"].principal_amount for r in rows), Decimal(0)),
         balance=sum((r["balance"] for r in rows), Decimal(0)),
         payment=sum((r["m"].monthly_equivalent_payment(prime) for r in rows), Decimal(0)),
-        arrears=sum((r["arrears"] for r in rows), Decimal(0)),
     )
+    if owner:
+        # The filtered mortgagee's own part of these loans.
+        share = {r["m"].id: next(o.share_pct for o in r["m"].mortgagees if o.name == owner) for r in rows}
+        totals["owner_balance"] = calc.money(sum((r["balance"] * share[r["m"].id] / 100 for r in rows), Decimal(0)))
     return render_template("mortgages/index.html", rows=rows, totals=totals, status=status, search=search,
-                           sort=sort, statuses=STATUSES, owner=owner, owner_names=owner_names())
+                           sort=sort, statuses=STATUSES, owner=owner, mortgagee_names=mortgagees.names_in_use())
 
 
 @bp.route("/new", methods=["GET", "POST"])
@@ -201,9 +206,12 @@ def new():
     if request.method == "POST":
         try:
             apply_form(m, request.form)
-        except FormError as exc:
+            owners = mortgagees.from_form(request.form)
+        except (FormError, MortgageeError) as exc:
             flash(str(exc), "danger")
             return render_template("mortgages/form.html", **form_context(m)), 400
+        if owners is not None:
+            mortgagees.assign(m, owners)
         db.session.add(m)
         if request.form.get("record_lender_fee") and m.lender_fee:
             # Lender fees are usually deducted from the advance, so they are income on the funding date.
@@ -226,7 +234,10 @@ def edit(mortgage_id):
         try:
             with db.session.no_autoflush:
                 apply_form(m, request.form)
-        except FormError as exc:
+                owners = mortgagees.from_form(request.form)
+                if owners is not None:
+                    mortgagees.assign(m, owners)
+        except (FormError, MortgageeError) as exc:
             db.session.rollback()
             flash(str(exc), "danger")
             m = db.get_or_404(Mortgage, mortgage_id)
@@ -540,6 +551,7 @@ def import_book():
                 if not form.get("reference"):
                     m.reference = None  # assigned after validation, so generated refs don't collide
                 adjustment = importer.balance_adjustment(form)
+                mortgagees.assign(m, mortgagees.parse_text(form.get("_mortgagees")))
             except (FormError, ValueError) as exc:
                 errors.append((n, form.get("borrower_name") or "?", str(exc)))
                 continue

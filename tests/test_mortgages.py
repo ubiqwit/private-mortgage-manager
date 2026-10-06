@@ -42,7 +42,7 @@ def test_create_mortgage_derives_dates_and_fee(client):
     assert len(m.transactions) == 1 and m.transactions[0].fees == Decimal("4000.00")
     assert client.get(f"/mortgages/{m.id}").status_code == 200
     assert client.get(f"/mortgages/{m.id}/schedule").status_code == 200
-    assert b"Jane Smith" in client.get("/mortgages/").data
+    assert m.property_address.encode() in client.get("/mortgages/").data
 
 
 def test_validation_errors(client):
@@ -183,19 +183,19 @@ def test_status_filter_and_default_order_follow_displayed_status(client):
     from app.timeutil import today
 
     t = today()
-    create(client, borrower_name="Later Borrower", funded_date=(t - timedelta(days=30)).isoformat(),
+    create(client, property_address="Later Street", funded_date=(t - timedelta(days=30)).isoformat(),
                    term_months="", maturity_date=(t + timedelta(days=300)).isoformat())
-    past = create(client, borrower_name="Past Borrower", funded_date=(t - timedelta(days=500)).isoformat(),
+    past = create(client, property_address="Past Street", funded_date=(t - timedelta(days=500)).isoformat(),
                   term_months="", maturity_date=(t - timedelta(days=100)).isoformat())
-    create(client, borrower_name="Soon Borrower", funded_date=(t - timedelta(days=30)).isoformat(),
+    create(client, property_address="Soon Street", funded_date=(t - timedelta(days=30)).isoformat(),
                   term_months="", maturity_date=(t + timedelta(days=60)).isoformat())
     assert past.status == "active" and past.display_status == "matured"
 
     active = client.get("/mortgages/?status=active").get_data(as_text=True)
-    assert "Later Borrower" in active and "Soon Borrower" in active and "Past Borrower" not in active
+    assert "Later Street" in active and "Soon Street" in active and "Past Street" not in active
     matured = client.get("/mortgages/?status=matured").get_data(as_text=True)
-    assert "Past Borrower" in matured and "Later Borrower" not in matured
+    assert "Past Street" in matured and "Later Street" not in matured
 
     page = client.get("/mortgages/").get_data(as_text=True)
-    order = [page.index(n) for n in ("Soon Borrower", "Later Borrower", "Past Borrower")]
+    order = [page.index(n) for n in ("Soon Street", "Later Street", "Past Street")]
     assert order == sorted(order), "running loans by maturity first, matured ones at the bottom"

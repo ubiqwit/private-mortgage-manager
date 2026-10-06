@@ -227,7 +227,7 @@ def month_end_workbook(report: dict, prepared_by: str = "") -> bytes:
 
     # 1. Summary -----------------------------------------------------------------
     cols = [
-        ("Reference", 11, None), ("Borrower", 26, None), ("Owners", 22, None), ("Property", 30, None), ("Position", 8, None),
+        ("Reference", 11, None), ("Borrower", 26, None), ("Mortgagees", 26, None), ("Property", 30, None), ("Position", 8, None),
         ("Rate %", 8, PCT), ("Opening balance", 15, MONEY), ("Advances", 13, MONEY), ("Principal repaid", 14, MONEY),
         ("Closing balance", 15, MONEY), ("Interest received", 14, MONEY), ("Fees received", 12, MONEY),
         ("Total income (interest + fees)", 15, MONEY), ("Interest earned (accrual)", 15, MONEY),
@@ -240,7 +240,7 @@ def month_end_workbook(report: dict, prepared_by: str = "") -> bytes:
     data = []
     for r in report["rows"]:
         m = r["m"]
-        row = [m.reference, m.borrower_name, m.owners or "", f"{m.property_address}, {m.property_city or ''}".strip(", "),
+        row = [m.reference, m.borrower_name, m.mortgagees_label, f"{m.property_address}, {m.property_city or ''}".strip(", "),
                m.position_label, r["rate"], r["opening"], r["advances"], r["principal"], r["closing"], r["interest"],
                r["fees"], r["income"], r["accrued"], r["expected"], r["regular"], r["variance"], r["arrears"], r["status"]]
         if report["has_syndicated"]:
@@ -374,7 +374,7 @@ def annual_workbook(report: dict, prepared_by: str = "") -> bytes:
     ws["A1"].font = Font(bold=True, size=14)
     ws["A2"] = f"Generated {report['generated']:%Y-%m-%d %H:%M}" + (f" by {prepared_by}" if prepared_by else "")
     ws["A2"].font = Font(italic=True, color="666666")
-    cols = [("Reference", 11), ("Borrower", 28), ("Owners", 22), ("Property", 32), ("Opening balance", 15), ("Advanced", 14),
+    cols = [("Reference", 11), ("Borrower", 28), ("Mortgagees", 26), ("Property", 32), ("Opening balance", 15), ("Advanced", 14),
             ("Principal repaid", 15), ("Closing balance", 15), ("Interest received", 15), ("Fees received", 13),
             ("Total income", 14), ("Interest earned (accrual)", 16)]
     if report["has_syndicated"]:
@@ -386,7 +386,7 @@ def annual_workbook(report: dict, prepared_by: str = "") -> bytes:
     r = 5
     for row in report["rows"]:
         m = row["m"]
-        values = [m.reference, m.borrower_name, m.owners or "", f"{m.property_address}, {m.property_city or ''}".strip(", "),
+        values = [m.reference, m.borrower_name, m.mortgagees_label, f"{m.property_address}, {m.property_city or ''}".strip(", "),
                   row["opening"], row["advances"], row["principal"], row["closing"], row["interest"], row["fees"],
                   row["income"], row["accrued"]]
         if report["has_syndicated"]:
