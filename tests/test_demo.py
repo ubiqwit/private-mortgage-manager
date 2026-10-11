@@ -29,12 +29,12 @@ def test_demo_book_is_varied_and_consistent(app):
     assert stats["arrears_count"] >= 2 and stats["count"] >= 15
 
 
-def test_load_and_remove_buttons(app, client):
-    assert client.post("/demo/load").status_code == 302
-    assert Mortgage.query.count() == 20
+def test_remove_button(app, client):
+    assert "Demo data" not in client.get("/users").get_data(as_text=True)  # nothing to remove, no load button
+    assert client.post("/demo/load").status_code == 404
+    demo.load_demo(date(2026, 10, 3))
     assert b"demo data" in client.get("/").data
-    client.post("/demo/load")  # second click does nothing
-    assert Mortgage.query.count() == 20
+    assert "Remove demo data" in client.get("/users").get_data(as_text=True)
     assert client.post("/demo/remove").status_code == 302
     assert Mortgage.query.count() == 0 and MortgageTransaction.query.count() == 0
 
@@ -43,4 +43,4 @@ def test_demo_buttons_admin_only(app):
     make_user("e@example.com", role="editor")
     c = app.test_client()
     c.post("/login", data={"email": "e@example.com", "password": PASSWORD})
-    assert c.post("/demo/load").status_code == 403
+    assert c.post("/demo/remove").status_code == 403

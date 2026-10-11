@@ -112,7 +112,9 @@ def test_closed_months_block_deleting(app, client):
 
 
 def test_demo_data_belongs_to_whoever_loaded_it(app, client):
-    client.post("/demo/load")
+    from app.services import demo
+
+    demo.load_demo(date(2026, 10, 3), user=User.query.filter_by(email="owner@example.com").one())
     assert {m.created_by.email for m in Mortgage.query.all()} == {"owner@example.com"}
 
 

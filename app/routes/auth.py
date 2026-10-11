@@ -196,23 +196,6 @@ def export_all():
                     headers={"Content-Disposition": f'attachment; filename="mortgage-manager-export-{today():%Y-%m-%d}.xlsx"'})
 
 
-@bp.route("/demo/load", methods=["POST"])
-def load_demo_data():
-    """Admin: fill the book with ~5 years of sample mortgages (all referenced DEMO-…)."""
-    _require_admin()
-    from ..services import demo
-    from ..timeutil import today
-
-    if demo.has_demo():
-        flash("Demo data is already loaded.", "info")
-        return redirect(url_for("auth.users"))
-    n = demo.load_demo(today(), user=g.user)
-    audit("demo_loaded", f"{n} demo mortgages")
-    db.session.commit()
-    flash(f"Loaded {n} demo mortgages with five years of history. Remove them before entering real data.", "success")
-    return redirect(url_for("dashboard.index"))
-
-
 @bp.route("/demo/remove", methods=["POST"])
 def remove_demo_data():
     _require_admin()

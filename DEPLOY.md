@@ -72,8 +72,8 @@ The free plan has no shell, so recovery is done from Render's settings:
 
 ## Limits to keep an eye on
 
-- **Storage:** Neon free is 0.5 GB. Mortgages, transactions and statements are tiny; uploaded documents
-  are what use space — prefer compressed PDFs over large photo scans. Neon's dashboard shows usage.
+- **Storage:** Neon free is 0.5 GB. Mortgages, transactions and statements are tiny, so this lasts a long
+  time; Neon's dashboard shows usage.
 - **Backups:** free plans keep only a short restore history. Once a month use
   **Users & data → Export all data (Excel)** and keep the file somewhere safe.
 - If you outgrow the free plans, upgrading is a plan change in Render/Neon — no code changes.
