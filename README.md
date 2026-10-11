@@ -159,7 +159,7 @@ app/
                        statements (bank file parsing), matching, reports, market, periods,
                        importer, backup, safety
   routes/              one blueprint per section
-  templates/, static/  Bootstrap UI (vendored, works offline) and Chart.js charts
+  templates/, static/  Bootstrap UI (vendored, works offline)
 migrations/            Alembic migrations, applied automatically on start-up
 tests/                 pytest suite
 ```

@@ -23,8 +23,7 @@
 <div class="alert alert-light border d-flex gap-2">
   <i class="bi {{ 'bi-arrow-down-circle-fill' if recent[3] < 0 else 'bi-arrow-up-circle-fill' }}"></i>
   <div><strong>The Bank of Canada {{ 'cut' if recent[3] < 0 else 'raised' }} its policy rate by {{ recent[3]|abs }} bp on {{ recent[0]|d }}</strong>
-    ({{ '%.2f'|format(recent[1]) }}% → {{ '%.2f'|format(recent[2]) }}%). Banks usually move prime by the same amount within a day or two.
-    {% if impact.variable %}{{ impact.variable|length }} of your mortgages float with prime — see the impact below.{% endif %}</div>
+    ({{ '%.2f'|format(recent[1]) }}% → {{ '%.2f'|format(recent[2]) }}%). Banks usually move prime by the same amount within a day or two.</div>
 </div>
 {% endif %}
 
@@ -37,7 +36,7 @@
 
 <div class="row g-3 mb-3">
   {% for c in cards %}
-  <div class="col-6 col-md-4 col-xl">
+  <div class="col-sm-4">
     <div class="card stat-card h-100 p-3" title="{{ c.s.note }}">
       <div class="stat-label">{{ c.s.short }}</div>
       <div class="stat-value">{{ ('%.2f'|format(c.obs.value)) ~ '%' if c.obs else '—' }}</div>
@@ -46,27 +45,11 @@
     </div>
   </div>
   {% endfor %}
-  <div class="col-6 col-md-4 col-xl">
-    <div class="card stat-card h-100 p-3" title="Year-over-year change in the Consumer Price Index">
-      <div class="stat-label">CPI inflation</div>
-      <div class="stat-value">{{ ('%.1f'|format(cpi[1])) ~ '%' if cpi else '—' }}</div>
-      <div class="stat-sub">{% if cpi %}year over year, {{ cpi[0].strftime('%b %Y') }}{% endif %}<br>BoC target: 2%</div>
-    </div>
-  </div>
 </div>
 
-<div class="row g-3 mb-3">
-  <div class="col-xl-7">
-    <div class="card p-3 h-100">
-      <div class="fw-semibold">Policy rate and prime, last 3 years</div>
-      <div class="small text-secondary mb-2">Banks typically set prime about 2.20 points above the policy rate; variable-rate loans follow prime.</div>
-      {% if policy_chart.labels %}
-        <div class="chart-box"><canvas id="policyChart" aria-label="Policy rate and prime rate over time"></canvas></div>
-      {% else %}<div class="text-secondary small py-5 text-center">No data yet — press Refresh now.</div>{% endif %}
-    </div>
-  </div>
+<div class="row g-3">
   <div class="col-xl-5">
-    <div class="card h-100">
+    <div class="card mb-3">
       <div class="card-header bg-white fw-semibold">Rate decisions</div>
       <table class="table table-sm mb-0">
         <thead class="table-light"><tr><th>Date</th><th>Move</th><th class="num">New rate</th></tr></thead>
@@ -81,89 +64,6 @@
         </tbody>
       </table>
     </div>
-  </div>
-</div>
-
-<div class="card mb-3">
-  <div class="card-header bg-white fw-semibold">What rate moves mean for your book</div>
-  <div class="card-body">
-    <div class="row g-4">
-      <div class="col-lg-6">
-        <h2 class="h6">Variable-rate mortgages ({{ impact.variable|length }}{% if impact.variable %}, {{ impact.variable_balance|money(false) }}{% endif %})</h2>
-        {% if impact.variable %}
-          <table class="table table-sm">
-            <thead class="table-light"><tr><th>Mortgage</th><th class="num">Balance</th><th class="num">Prime +</th><th class="num">Floor</th><th class="num">Rate now</th><th class="num">Interest/mo</th></tr></thead>
-            <tbody>{% for r in impact.variable %}
-              <tr><td><a href="{{ url_for('mortgages.detail', mortgage_id=r.m.id) }}">{{ r.m.reference }}</a> {{ r.m.borrower_name }}</td>
-                <td class="num">{{ r.balance|money(false) }}</td><td class="num">{{ r.spread|pct }}</td><td class="num">{{ r.floor|pct if r.floor is not none else '—' }}</td>
-                <td class="num">{{ r.rate|pct }}{% if r.at_floor %} <span class="badge text-bg-secondary" title="Rate is held up by the floor">floor</span>{% endif %}</td>
-                <td class="num">{{ r.monthly|money }}</td></tr>
-            {% endfor %}</tbody>
-          </table>
-          {% if impact.scenarios %}
-          <div class="small fw-semibold mb-1">If prime moves… (monthly interest from variable loans, floors applied)</div>
-          <div class="d-flex flex-wrap gap-2">
-            {% for bp, total, diff in impact.scenarios %}
-              <div class="border rounded px-2 py-1 small {% if bp == 0 %}bg-light fw-semibold{% endif %}">
-                {{ ('+' if bp > 0 else '') ~ bp }} bp: {{ total|money(false) }}
-                {% if bp != 0 %}<span class="text-secondary">({{ ('+' if diff > 0 else '') ~ (diff|money(false)) }})</span>{% endif %}</div>
-            {% endfor %}
-          </div>
-          {% else %}<p class="small text-secondary">Prime isn't known yet, so variable loans use the rate entered on each mortgage.</p>{% endif %}
-        {% else %}
-          <p class="small text-secondary">None — every open mortgage is fixed-rate, so policy-rate moves don't change your current income.
-            They do affect what you can charge on renewals and new loans.</p>
-        {% endif %}
-      </div>
-      <div class="col-lg-6">
-        <h2 class="h6">Fixed-rate book ({{ impact.fixed_count }}{% if impact.fixed_count %}, {{ impact.fixed_balance|money(false) }}{% endif %})</h2>
-        {% if impact.fixed_rate is not none %}
-        <table class="table table-sm">
-          <tr><td>Your weighted average fixed rate</td><td class="num fw-semibold">{{ impact.fixed_rate|pct }}</td></tr>
-          <tr><td>Premium over the 5-yr Government of Canada yield</td><td class="num">{{ impact.spread_over_goc5|pct if impact.spread_over_goc5 is not none else '—' }}</td></tr>
-          <tr><td>Premium over the banks' posted 5-yr mortgage rate</td><td class="num">{{ impact.spread_over_posted|pct if impact.spread_over_posted is not none else '—' }}</td></tr>
-        </table>
-        {% endif %}
-        <h2 class="h6 mt-3">Maturing in the next 6 months — reprice with today's market in mind</h2>
-        {% if impact.renewals %}
-        <table class="table table-sm mb-0">
-          <thead class="table-light"><tr><th>Mortgage</th><th>Matures</th><th class="num">Balance</th><th class="num">Rate</th><th class="num">Over prime</th></tr></thead>
-          <tbody>{% for r in impact.renewals %}
-            <tr><td><a href="{{ url_for('mortgages.detail', mortgage_id=r.m.id) }}">{{ r.m.reference }}</a> {{ r.m.borrower_name }}</td>
-              <td class="text-nowrap">{% if r.days < 0 %}<i class="bi bi-exclamation-octagon-fill status-critical" title="Past maturity"></i> {% endif %}{{ r.m.maturity_date|d }}</td>
-              <td class="num">{{ r.balance|money(false) }}</td><td class="num">{{ r.rate|pct }}</td>
-              <td class="num">{{ ('+' ~ ('%.2f'|format(r.spread_over_prime)) ~ '%') if r.spread_over_prime is not none else '—' }}</td></tr>
-          {% endfor %}</tbody>
-        </table>
-        {% else %}<p class="small text-secondary">No mortgages mature in the next 6 months.</p>{% endif %}
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="row g-3">
-  <div class="col-xl-7">
-    <div class="card h-100">
-      <div class="card-header bg-white fw-semibold">News</div>
-      <ul class="list-group list-group-flush">
-        {% for n in news %}
-          <li class="list-group-item">
-            <a href="{{ n.link }}" target="_blank" rel="noopener noreferrer nofollow" class="fw-semibold text-decoration-none">{{ n.title }}</a>
-            <div class="small text-secondary">{{ n.source }}{% if n.published %} · {{ n.published|local('%b %d, %Y %H:%M') }}{% endif %}</div>
-          </li>
-        {% else %}
-          <li class="list-group-item text-secondary small">No news loaded yet.{% if fetch_enabled %} Press Refresh now.{% endif %}</li>
-        {% endfor %}
-      </ul>
-    </div>
-  </div>
-  <div class="col-xl-5">
-    <div class="card p-3 mb-3">
-      <div class="fw-semibold">Government of Canada bond yields, last 12 months</div>
-      <div class="small text-secondary mb-2">5-year yields lead fixed mortgage pricing.</div>
-      {% if yield_chart.labels %}<div class="chart-box"><canvas id="yieldChart" aria-label="Government of Canada bond yields"></canvas></div>
-      {% else %}<div class="text-secondary small py-4 text-center">No data yet.</div>{% endif %}
-    </div>
     {% if current_user.can_edit %}
     <form method="post" action="{{ url_for('market.manual') }}" class="card p-3 mb-3">{{ csrf_field() }}
       <div class="fw-semibold mb-1">Enter a rate by hand</div>
@@ -177,38 +77,32 @@
       <button class="btn btn-sm btn-outline-primary mt-2">Save rate</button>
     </form>
     {% endif %}
-    {% if current_user.is_admin %}
-    <details class="card p-3">
-      <summary class="fw-semibold">News sources</summary>
-      <form method="post" action="{{ url_for('market.save_feeds') }}" class="mt-2">{{ csrf_field() }}
-        <textarea name="feeds" rows="4" class="form-control form-control-sm font-monospace">{% for label, url in feeds %}{{ label }}|{{ url }}
-{% endfor %}</textarea>
-        <div class="form-text">One RSS/Atom feed per line: <code>Label|https://…</code>. Google News searches work well, e.g. a feed for your city's housing market.</div>
-        <button class="btn btn-sm btn-outline-primary mt-2">Save sources</button>
-      </form>
-    </details>
-    {% endif %}
+  </div>
+  <div class="col-xl-7">
+    <div class="card">
+      <div class="card-header bg-white fw-semibold">News</div>
+      <ul class="list-group list-group-flush">
+        {% for n in news %}
+          <li class="list-group-item">
+            <a href="{{ n.link }}" target="_blank" rel="noopener noreferrer nofollow" class="fw-semibold text-decoration-none">{{ n.title }}</a>
+            <div class="small text-secondary">{{ n.source }}{% if n.published %} · {{ n.published|local('%b %d, %Y %H:%M') }}{% endif %}</div>
+          </li>
+        {% else %}
+          <li class="list-group-item text-secondary small">No news loaded yet.{% if fetch_enabled %} Press Refresh now.{% endif %}</li>
+        {% endfor %}
+      </ul>
+    </div>
   </div>
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="{{ url_for('static', filename='vendor/chartjs/chart.umd.min.js') }}"></script>
-<script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+{% if stale %}
 <script>
-  const pc = {{ policy_chart|tojson }};
-  if (pc.labels.length) PMM.lineChart(document.getElementById('policyChart'), pc.labels, [
-    { label: 'Policy rate', data: pc.policy }, { label: 'Prime', data: pc.prime },
-  ], { stepped: true });
-  const yc = {{ yield_chart|tojson }};
-  if (yc.labels.length) PMM.lineChart(document.getElementById('yieldChart'), yc.labels, [
-    { label: '2-yr', data: yc.two }, { label: '5-yr', data: yc.five }, { label: '10-yr', data: yc.ten },
-  ]);
-  {% if stale %}
   // Data is more than a few hours old: refresh in the background, then reload if anything changed.
   fetch("{{ url_for('market.refresh') }}", { method: 'POST', headers: { 'X-CSRF-Token': "{{ csrf_token() }}", 'X-Requested-With': 'fetch', 'Accept': 'application/json' } })
     .then((r) => r.ok ? r.json() : null)
     .then((res) => { if (res && res.added > 0) location.reload(); else document.getElementById('fetch-status').textContent += ' · checked just now'; })
     .catch(() => {});
-  {% endif %}
 </script>
+{% endif %}
 {% endblock %}

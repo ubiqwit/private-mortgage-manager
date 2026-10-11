@@ -62,7 +62,7 @@ def test_refresh_stores_data_and_reports_errors(app):
     assert result["series"]["V39079"] == 2
     assert market.latest_prime() == Decimal("4.70")
     assert NewsItem.query.count() == 2
-    assert any("5-yr GoC" in e for e in result["errors"])  # unreachable series reported, not raised
+    assert any("5-yr posted mortgage" in e for e in result["errors"])  # unreachable series reported, not raised
     # Second run: nothing new, no duplicates.
     again = market.refresh(force=True, get=get)
     assert again["series"]["V39079"] == 0 and NewsItem.query.count() == 2
@@ -70,20 +70,12 @@ def test_refresh_stores_data_and_reports_errors(app):
     assert not market.is_stale()
 
 
-def test_portfolio_impact_with_floor(client):
-    create(client, rate_type="variable", prime_spread="5", rate_floor="9.5", record_lender_fee="")
-    create(client, borrower_name="Fixed Fred", property_address="2 Oak", record_lender_fee="")
-    impact = market.portfolio_impact(Decimal("4.70"))
-    assert len(impact["variable"]) == 1 and impact["fixed_count"] == 1
-    scen = {bp: (total, diff) for bp, total, diff in impact["scenarios"]}
-    # 9.70% on $200k monthly = 1616.67; -25bp hits the 9.50% floor (1583.33); -50bp stays at the floor.
-    assert scen[0][0] == Decimal("1616.67")
-    assert scen[-25][0] == scen[-50][0] == Decimal("1583.33")
-    assert scen[25][1] == Decimal("41.66")  # 1658.33 - 1616.67
-
-
 def test_market_page_and_manual_prime(client):
-    assert client.get("/market/").status_code == 200
+    page = client.get("/market/").get_data(as_text=True)
+    for shown in ("Policy rate", "Prime", "5-yr posted mortgage", "Rate decisions", "News", "Enter a rate by hand"):
+        assert shown in page
+    for gone in ("CPI", "GoC", "bond yields", "What rate moves mean", "News sources", "chart"):
+        assert gone not in page
     resp = client.post("/market/manual", data={"series": "V80691311", "value": "4.70", "date": "2026-09-18"})
     assert resp.status_code == 302
     obs = MarketObservation.query.one()
