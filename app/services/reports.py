@@ -1,19 +1,22 @@
-"""Month-end income report for the accountant (on screen, Excel and CSV)."""
+"""Month-end income report for the accountant (on screen and as an Excel workbook).
+
+The report covers the whole book, or one mortgagee's share of the mortgages they own
+(each amount × their percentage), which is what that owner's accountant needs.
+"""
 from __future__ import annotations
 
 import calendar
-import csv
 import io
 from datetime import date, timedelta
 from decimal import Decimal
 
 from dateutil.relativedelta import relativedelta
 
-from ..models import BankTransaction, Mortgage, MortgageTransaction
+from ..models import BankTransaction, Mortgage, Mortgagee, MortgageTransaction
 from ..timeutil import now as local_now
 from ..timeutil import today as local_today
 from . import calc
-from .safety import csv_safe, set_text_cell
+from .safety import set_text_cell
 
 ZERO = Decimal("0.00")
 
@@ -53,13 +56,29 @@ def accrued_interest(m: Mortgage, start: date, end: date, prime=None) -> Decimal
     return calc.money(total)
 
 
-def month_end_report(year: int, month: int, prime=None) -> dict:
+MONEY_KEYS = ("opening", "closing", "advances", "principal", "interest", "fees", "received", "income", "accrued",
+              "expected", "regular", "arrears")
+
+
+def _mortgages_for(mortgagee: str | None):
+    """[(mortgage, share)] — every mortgage at 100%, or the ones ``mortgagee`` owns at their share."""
+    q = Mortgage.query.order_by(Mortgage.reference)
+    if not mortgagee:
+        return [(m, Decimal(1)) for m in q.all()]
+    out = []
+    for m in q.filter(Mortgage.mortgagees.any(Mortgagee.name == mortgagee)).all():
+        pct = next(o.share_pct for o in m.mortgagees if o.name == mortgagee)
+        out.append((m, Decimal(str(pct)) / 100))
+    return out
+
+
+def month_end_report(year: int, month: int, prime=None, mortgagee: str | None = None) -> dict:
     start, end = month_range(year, month)
     before = start - timedelta(days=1)
 
-    mortgages = Mortgage.query.order_by(Mortgage.reference).all()
+    owned = _mortgages_for(mortgagee)
     rows = []
-    for m in mortgages:
+    for m, share in owned:
         txns = [t for t in m.transactions if start <= t.date <= end]
         opening = m.balance(as_of=before) if m.funded_date <= before else ZERO
         closing = m.balance(as_of=end) if m.funded_date <= end else ZERO
@@ -80,49 +99,47 @@ def month_end_report(year: int, month: int, prime=None) -> dict:
         # A loan funded this month: its opening balance is zero and the advance is new money out.
         if m.funded_date >= start and m.funded_date <= end:
             inc["advances"] += Decimal(str(m.principal_amount))
-        due = m.due_dates(start=start, end=end)
         expected = m.scheduled_total(start=start, end=end, prime=prime) if closing > 0 or opening > 0 else ZERO
         regular = m.regular_received(end) - m.regular_received(before)
-        share = Decimal(str(m.ownership_pct or 100)) / 100
-        accrued = accrued_interest(m, start, end, prime)
+        amounts = dict(
+            opening=opening, closing=closing, advances=inc["advances"], principal=inc["principal"],
+            interest=inc["interest"], fees=inc["fees"], received=inc["received"], income=inc["interest"] + inc["fees"],
+            accrued=accrued_interest(m, start, end, prime), expected=expected, regular=regular,
+            arrears=m.arrears(end, prime),
+        )
         rows.append(dict(
-            m=m, opening=opening, closing=closing, rate=m.effective_rate(prime, on=end),
-            advances=calc.money(inc["advances"]), principal=calc.money(inc["principal"]),
-            interest=calc.money(inc["interest"]), fees=calc.money(inc["fees"]), received=calc.money(inc["received"]),
-            income=calc.money(inc["interest"] + inc["fees"]),
-            share_pct=Decimal(str(m.ownership_pct or 100)),
-            your_income=calc.money((inc["interest"] + inc["fees"]) * share),
-            accrued=accrued, expected=calc.money(expected), regular=calc.money(regular),
-            variance=calc.money(regular - expected), payments_due=len(due),
-            arrears=m.arrears(end, prime), status=m.display_status_label if end >= local_today() else _status_at(m, end),
+            m=m, rate=m.effective_rate(prime, on=end), share_pct=calc.money(share * 100),
+            status=m.display_status_label if end >= local_today() else _status_at(m, end),
+            **{k: calc.money(v * share) for k, v in amounts.items()},
         ))
 
-    def total(key):
-        return calc.money(sum((r[key] for r in rows), ZERO))
+    totals = {k: calc.money(sum((r[k] for r in rows), ZERO)) for k in MONEY_KEYS}
 
-    totals = {k: total(k) for k in ("opening", "closing", "advances", "principal", "interest", "fees", "received",
-                                    "income", "your_income", "accrued", "expected", "regular", "variance", "arrears")}
+    transactions = MortgageTransaction.query.filter(MortgageTransaction.date.between(start, end))
+    if mortgagee:
+        transactions = transactions.filter(MortgageTransaction.mortgage_id.in_([m.id for m, _ in owned]))
+    transactions = transactions.order_by(MortgageTransaction.date, MortgageTransaction.id).all()
 
-    transactions = (MortgageTransaction.query.filter(MortgageTransaction.date.between(start, end))
-                    .order_by(MortgageTransaction.date, MortgageTransaction.id).all())
-
-    deposits = BankTransaction.query.filter(BankTransaction.date.between(start, end), BankTransaction.amount > 0).all()
-    bank = {
-        "count": len(deposits),
-        "total": calc.money(sum((Decimal(str(b.amount)) for b in deposits), ZERO)),
-        "matched": calc.money(sum((b.allocated for b in deposits), ZERO)),
-        "ignored": calc.money(sum((Decimal(str(b.amount)) for b in deposits if b.status == "ignored"), ZERO)),
-        "unmatched_lines": sorted((b for b in deposits if b.status == "unmatched"), key=lambda b: b.date),
-    }
-    bank["unmatched"] = calc.money(sum((Decimal(str(b.amount)) - b.allocated for b in bank["unmatched_lines"]), ZERO))
-    # Mortgage receipts recorded by hand (no bank line) — the accountant may want to see these separately.
-    manual = [t for t in transactions if t.bank_transaction_id is None and t.type not in ("advance", "funding")]
+    # Bank reconciliation is about the bank account, so it belongs to the whole-book report only.
+    bank = manual = None
+    if not mortgagee:
+        deposits = BankTransaction.query.filter(BankTransaction.date.between(start, end), BankTransaction.amount > 0).all()
+        bank = {
+            "count": len(deposits),
+            "total": calc.money(sum((Decimal(str(b.amount)) for b in deposits), ZERO)),
+            "matched": calc.money(sum((b.allocated for b in deposits), ZERO)),
+            "ignored": calc.money(sum((Decimal(str(b.amount)) for b in deposits if b.status == "ignored"), ZERO)),
+            "unmatched_lines": sorted((b for b in deposits if b.status == "unmatched"), key=lambda b: b.date),
+        }
+        bank["unmatched"] = calc.money(sum((Decimal(str(b.amount)) - b.allocated for b in bank["unmatched_lines"]),
+                                           ZERO))
+        # Receipts recorded by hand (no bank line) — the accountant may want to see these separately.
+        manual = [t for t in transactions if t.bank_transaction_id is None and t.type not in ("advance", "funding")]
 
     return dict(
-        year=year, month=month, start=start, end=end, label=start.strftime("%B %Y"),
+        year=year, month=month, start=start, end=end, label=start.strftime("%B %Y"), mortgagee=mortgagee,
         rows=rows, totals=totals, transactions=transactions, bank=bank, manual=manual,
-        ytd=ytd_by_month(year, month), has_syndicated=any(r["share_pct"] != 100 for r in rows),
-        generated=local_now(),
+        ytd=ytd_by_month(year, month, owned), generated=local_now(),
     )
 
 
@@ -134,19 +151,25 @@ def _status_at(m: Mortgage, as_of: date) -> str:
     return "Active"
 
 
-def ytd_by_month(year: int, through_month: int):
-    """Interest and fees received per mortgage per month, January → ``through_month``."""
+def ytd_by_month(year: int, through_month: int, owned=None):
+    """Interest and fees received per mortgage per month, January → ``through_month``.
+
+    ``owned`` ([(mortgage, share)]) limits it to those mortgages, at that share."""
     start = date(year, 1, 1)
     _, end = month_range(year, through_month)
+    shares = {m.id: share for m, share in owned} if owned is not None else None
     txns = MortgageTransaction.query.filter(MortgageTransaction.date.between(start, end)).all()
     table = {}
     for t in txns:
-        if t.type in ("advance", "funding"):
+        if t.type in ("advance", "funding") or (shares is not None and t.mortgage_id not in shares):
             continue
         row = table.setdefault(t.mortgage_id, {"m": t.mortgage, "months": [ZERO] * through_month, "total": ZERO})
-        amt = Decimal(str(t.interest or 0)) + Decimal(str(t.fees or 0))
+        amt = (Decimal(str(t.interest or 0)) + Decimal(str(t.fees or 0))) * (shares[t.mortgage_id] if shares else 1)
         row["months"][t.date.month - 1] += amt
         row["total"] += amt
+    for row in table.values():
+        row["months"] = [calc.money(v) for v in row["months"]]
+        row["total"] = calc.money(row["total"])
     rows = sorted(table.values(), key=lambda r: r["m"].reference)
     month_totals = [calc.money(sum((r["months"][i] for r in rows), ZERO)) for i in range(through_month)]
     return dict(
@@ -158,21 +181,6 @@ def ytd_by_month(year: int, through_month: int):
 # ----------------------------------------------------------------------------
 # Exports
 # ----------------------------------------------------------------------------
-def transactions_csv(report: dict) -> str:
-    out = io.StringIO()
-    w = csv.writer(out)
-    w.writerow(["Date", "Mortgage", "Borrower", "Property", "Type", "Amount", "Interest", "Principal", "Fees",
-                "Bank account", "Bank description", "Notes"])
-    for t in report["transactions"]:
-        bt = t.bank_transaction
-        w.writerow([t.date.isoformat()] + [csv_safe(v) for v in (
-            t.mortgage.reference, t.mortgage.borrower_name, t.mortgage.property_address, t.type_label)] + [
-            f"{t.signed_amount:.2f}", f"{Decimal(str(t.interest or 0)):.2f}",
-            f"{Decimal(str(t.principal or 0)):.2f}", f"{Decimal(str(t.fees or 0)):.2f}"] + [csv_safe(v) for v in (
-            bt.account_name if bt else "", bt.description if bt else "", t.notes or "")])
-    return out.getvalue()
-
-
 def month_end_workbook(report: dict, prepared_by: str = "") -> bytes:
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -223,6 +231,7 @@ def month_end_workbook(report: dict, prepared_by: str = "") -> bytes:
         return r
 
     label = report["label"]
+    who = report["mortgagee"]
     t = report["totals"]
 
     # 1. Summary -----------------------------------------------------------------
@@ -232,24 +241,23 @@ def month_end_workbook(report: dict, prepared_by: str = "") -> bytes:
         ("Closing balance", 15, MONEY), ("Interest received", 14, MONEY), ("Fees received", 12, MONEY),
         ("Total income (interest + fees)", 15, MONEY), ("Interest earned (accrual)", 15, MONEY),
         ("Scheduled payments due", 14, MONEY), ("Regular payments received", 14, MONEY),
-        ("Variance", 12, MONEY), ("Arrears at month end", 13, MONEY), ("Status", 12, None),
+        ("Arrears at month end", 13, MONEY), ("Status", 12, None),
     ]
-    if report["has_syndicated"]:
-        cols[13:13] = [("Your share %", 9, PCT), ("Your share of income", 14, MONEY)]
-    ws = sheet("Summary", f"Mortgage income summary — {label}", cols, first=True)
+    if who:
+        cols[6:6] = [("Share %", 9, PCT)]
+    ws = sheet("Summary", f"Mortgage income summary — {label}" + (f" — {who}'s share" if who else ""), cols, first=True)
     data = []
     for r in report["rows"]:
         m = r["m"]
         row = [m.reference, m.borrower_name, m.mortgagees_label, f"{m.property_address}, {m.property_city or ''}".strip(", "),
                m.position_label, r["rate"], r["opening"], r["advances"], r["principal"], r["closing"], r["interest"],
-               r["fees"], r["income"], r["accrued"], r["expected"], r["regular"], r["variance"], r["arrears"], r["status"]]
-        if report["has_syndicated"]:
-            row[13:13] = [r["share_pct"], r["your_income"]]
+               r["fees"], r["income"], r["accrued"], r["expected"], r["regular"], r["arrears"], r["status"]]
+        if who:
+            row[6:6] = [r["share_pct"]]
         data.append(row)
     money_cols = [i for i, c in enumerate(cols, start=1) if c[2] == MONEY]
     end_row = write_rows(ws, cols, data, money_cols)
     # Headline numbers under the table.
-    b = report["bank"]
     notes = [
         ("Interest received (cash)", t["interest"]),
         ("Fees received", t["fees"]),
@@ -257,25 +265,32 @@ def month_end_workbook(report: dict, prepared_by: str = "") -> bytes:
         ("Interest earned this month (accrual basis)", t["accrued"]),
         ("Principal repaid", t["principal"]),
         ("New advances", t["advances"]),
-        ("Bank deposits this month", b["total"]),
-        ("…matched to mortgages", b["matched"]),
-        ("…marked not mortgage-related", b["ignored"]),
-        ("…still unmatched (review)", b["unmatched"]),
     ]
+    b = report["bank"]
+    if b:
+        notes += [
+            ("Bank deposits this month", b["total"]),
+            ("…matched to mortgages", b["matched"]),
+            ("…marked not mortgage-related", b["ignored"]),
+            ("…still unmatched (review)", b["unmatched"]),
+        ]
     r0 = end_row + 2
     for i, (k, v) in enumerate(notes):
         ws.cell(row=r0 + i, column=2, value=k).font = Font(bold=i < 3)
         c = ws.cell(row=r0 + i, column=4, value=float(v))
         c.number_format = MONEY
-    ws.cell(row=r0 + len(notes) + 1, column=2,
-            value="Cash = money received in the month. Accrual = interest earned on each day's balance, "
-                  "whether or not it was paid.").font = Font(italic=True, color="666666")
+    explain = ("Cash = money received in the month. Accrual = interest earned on each day's balance, "
+               "whether or not it was paid.")
+    if who:
+        explain += f" Amounts are {who}'s share of each mortgage (Share %)."
+    ws.cell(row=r0 + len(notes) + 1, column=2, value=explain).font = Font(italic=True, color="666666")
 
     # 2. Transactions --------------------------------------------------------------
     cols = [("Date", 11, "yyyy-mm-dd"), ("Reference", 11, None), ("Borrower", 26, None), ("Type", 18, None),
             ("Amount", 13, MONEY), ("Interest", 12, MONEY), ("Principal", 12, MONEY), ("Fees", 11, MONEY),
             ("Source", 9, None), ("Bank account", 18, None), ("Bank description", 40, None), ("Notes", 30, None)]
-    ws = sheet("Transactions", f"Mortgage transactions — {label}", cols)
+    ws = sheet("Transactions", f"Mortgage transactions — {label}"
+               + (f" — {who}'s mortgages, full amounts" if who else ""), cols)
     data = []
     for tx in report["transactions"]:
         bt = tx.bank_transaction
@@ -285,20 +300,22 @@ def month_end_workbook(report: dict, prepared_by: str = "") -> bytes:
                      tx.notes or ""])
     write_rows(ws, cols, data, (5, 6, 7, 8))
 
-    # 3. Bank reconciliation -------------------------------------------------------------
-    cols = [("Date", 11, "yyyy-mm-dd"), ("Account", 18, None), ("Description", 45, None), ("Amount", 13, MONEY),
-            ("Unallocated", 13, MONEY)]
-    ws = sheet("Unmatched deposits", f"Deposits not yet matched to a mortgage — {label}", cols)
-    data = [[bl.date, bl.account_name, bl.description, Decimal(str(bl.amount)), Decimal(str(bl.amount)) - bl.allocated]
-            for bl in b["unmatched_lines"]]
-    end_row = write_rows(ws, cols, data, (4, 5))
-    if not data:
-        ws.cell(row=5, column=1, value="None — every deposit this month is matched or marked as not mortgage-related.")
+    # 3. Bank reconciliation (whole book only) -----------------------------------------
+    if b:
+        cols = [("Date", 11, "yyyy-mm-dd"), ("Account", 18, None), ("Description", 45, None), ("Amount", 13, MONEY),
+                ("Unallocated", 13, MONEY)]
+        ws = sheet("Unmatched deposits", f"Deposits not yet matched to a mortgage — {label}", cols)
+        data = [[bl.date, bl.account_name, bl.description, Decimal(str(bl.amount)), Decimal(str(bl.amount)) - bl.allocated]
+                for bl in b["unmatched_lines"]]
+        write_rows(ws, cols, data, (4, 5))
+        if not data:
+            ws.cell(row=5, column=1, value="None — every deposit this month is matched or marked as not mortgage-related.")
 
     # 4. Year to date ----------------------------------------------------------------
     ytd = report["ytd"]
     cols = [("Reference", 11, None), ("Borrower", 26, None)] + [(lbl, 12, MONEY) for lbl in ytd["labels"]] + [("Total", 14, MONEY)]
-    ws = sheet("YTD income", f"Interest + fees received by month — {report['year']} year to date", cols)
+    ws = sheet("YTD income", f"Interest + fees received by month — {report['year']} year to date"
+               + (f" — {who}'s share" if who else ""), cols)
     data = [[r["m"].reference, r["m"].borrower_name] + r["months"] + [r["total"]] for r in ytd["rows"]]
     write_rows(ws, cols, data, range(3, len(cols) + 1))
 
@@ -318,106 +335,3 @@ def previous_months(n=18, today: date | None = None):
     today = today or local_today()
     first = today.replace(day=1)
     return [(first - relativedelta(months=i)) for i in range(n)]
-
-
-# ----------------------------------------------------------------------------
-# Annual summary (tax time)
-# ----------------------------------------------------------------------------
-def annual_report(year: int, prime=None) -> dict:
-    start, end = date(year, 1, 1), date(year, 12, 31)
-    today = local_today()
-    period_end = min(end, today)
-    rows = []
-    for m in Mortgage.query.order_by(Mortgage.reference).all():
-        if m.funded_date > end:
-            continue
-        txns = [t for t in m.transactions if start <= t.date <= end]
-        opening = m.balance(as_of=start - timedelta(days=1)) if m.funded_date < start else ZERO
-        closing = m.balance(as_of=end)
-        if not txns and opening <= 0 and closing <= 0:
-            continue
-        inc = {"interest": ZERO, "fees": ZERO, "principal": ZERO, "advances": ZERO}
-        for t in txns:
-            if t.type == "advance":
-                inc["advances"] += Decimal(str(t.amount))
-            elif t.type != "funding":
-                inc["interest"] += Decimal(str(t.interest or 0))
-                inc["fees"] += Decimal(str(t.fees or 0))
-                inc["principal"] += Decimal(str(t.principal or 0))
-        if start <= m.funded_date <= end:
-            inc["advances"] += Decimal(str(m.principal_amount))
-        income = inc["interest"] + inc["fees"]
-        share = Decimal(str(m.ownership_pct or 100))
-        rows.append(dict(
-            m=m, opening=opening, closing=closing, advances=calc.money(inc["advances"]),
-            principal=calc.money(inc["principal"]), interest=calc.money(inc["interest"]), fees=calc.money(inc["fees"]),
-            income=calc.money(income), share_pct=share, your_income=calc.money(income * share / 100),
-            accrued=accrued_interest(m, start, period_end, prime) if period_end >= start else ZERO,
-        ))
-    keys = ("opening", "closing", "advances", "principal", "interest", "fees", "income", "your_income", "accrued")
-    totals = {k: calc.money(sum((r[k] for r in rows), ZERO)) for k in keys}
-    return dict(year=year, start=start, end=end, partial=end > today, rows=rows, totals=totals,
-                ytd=ytd_by_month(year, 12 if end <= today else today.month) if start <= today else None,
-                has_syndicated=any(r["share_pct"] != 100 for r in rows), generated=local_now())
-
-
-def annual_workbook(report: dict, prepared_by: str = "") -> bytes:
-    from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill
-    from openpyxl.utils import get_column_letter
-
-    MONEY = '#,##0.00;[Red]-#,##0.00'
-    wb = Workbook()
-    ws = wb.active
-    ws.title = f"Income {report['year']}"
-    ws["A1"] = f"Mortgage income summary — {report['year']}" + (" (year to date)" if report["partial"] else "")
-    ws["A1"].font = Font(bold=True, size=14)
-    ws["A2"] = f"Generated {report['generated']:%Y-%m-%d %H:%M}" + (f" by {prepared_by}" if prepared_by else "")
-    ws["A2"].font = Font(italic=True, color="666666")
-    cols = [("Reference", 11), ("Borrower", 28), ("Mortgagees", 26), ("Property", 32), ("Opening balance", 15), ("Advanced", 14),
-            ("Principal repaid", 15), ("Closing balance", 15), ("Interest received", 15), ("Fees received", 13),
-            ("Total income", 14), ("Interest earned (accrual)", 16)]
-    if report["has_syndicated"]:
-        cols += [("Your share %", 10), ("Your share of income", 16)]
-    for i, (name, width) in enumerate(cols, start=1):
-        c = ws.cell(row=4, column=i, value=name)
-        c.font, c.fill = Font(bold=True, color="FFFFFF"), PatternFill("solid", fgColor="14213D")
-        ws.column_dimensions[get_column_letter(i)].width = width
-    r = 5
-    for row in report["rows"]:
-        m = row["m"]
-        values = [m.reference, m.borrower_name, m.mortgagees_label, f"{m.property_address}, {m.property_city or ''}".strip(", "),
-                  row["opening"], row["advances"], row["principal"], row["closing"], row["interest"], row["fees"],
-                  row["income"], row["accrued"]]
-        if report["has_syndicated"]:
-            values += [row["share_pct"], row["your_income"]]
-        for i, v in enumerate(values, start=1):
-            c = set_text_cell(ws.cell(row=r, column=i), float(v) if isinstance(v, Decimal) else v)
-            if i >= 5 and not (report["has_syndicated"] and i == 13):
-                c.number_format = MONEY
-        r += 1
-    if report["rows"]:
-        ws.cell(row=r, column=1, value="Total").font = Font(bold=True)
-        for i in range(5, len(cols) + 1):
-            if report["has_syndicated"] and i == 13:
-                continue
-            col = get_column_letter(i)
-            c = ws.cell(row=r, column=i, value=f"=SUM({col}5:{col}{r - 1})")
-            c.number_format, c.font = MONEY, Font(bold=True)
-    ws.freeze_panes = "A5"
-    if report["ytd"]:
-        ys = wb.create_sheet("By month")
-        ytd = report["ytd"]
-        ys.append(["Reference", "Borrower"] + ytd["labels"] + ["Total"])
-        for c in ys[1]:
-            c.font, c.fill = Font(bold=True, color="FFFFFF"), PatternFill("solid", fgColor="14213D")
-        for row in ytd["rows"]:
-            ys.append([row["m"].reference, row["m"].borrower_name] + [float(v) for v in row["months"]] + [float(row["total"])])
-        ys.append(["Total", ""] + [float(v) for v in ytd["month_totals"]] + [float(ytd["total"])])
-        for row in ys.iter_rows(min_row=2, min_col=3):
-            for c in row:
-                c.number_format = MONEY
-        ys.column_dimensions["B"].width = 28
-    buf = io.BytesIO()
-    wb.save(buf)
-    return buf.getvalue()

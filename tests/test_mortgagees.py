@@ -149,8 +149,6 @@ def test_reports_list_mortgagees(client):
     rows = list(ws.iter_rows(values_only=True))
     header = next(row for row in rows if row and row[0] == "Reference")
     assert header[2] == "Mortgagees" and rows[rows.index(header) + 1][2] == "A 60%, B 40%"
-    annual = load_workbook(io.BytesIO(reports.annual_workbook(reports.annual_report(2026)))).active
-    assert annual.cell(row=4, column=3).value == "Mortgagees" and annual.cell(row=5, column=3).value == "A 60%, B 40%"
 
 
 def test_import_mortgagees(client):

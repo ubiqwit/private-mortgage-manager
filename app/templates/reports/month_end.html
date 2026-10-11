@@ -9,19 +9,25 @@
   <div>
     <h1 class="h3 mb-0">Month-end report · {{ r.label }}
       {% if closed_through and r.end <= closed_through %}<span class="badge text-bg-secondary align-middle fs-6"><i class="bi bi-lock-fill"></i> Closed</span>{% endif %}</h1>
-    <div class="text-secondary small">Mortgage income for your accountant — {{ r.start|d }} to {{ r.end|d }}</div>
+    <div class="text-secondary small">
+      {% if who %}<strong>{{ who }}'s share</strong> of the mortgages they own — {{ r.start|d }} to {{ r.end|d }}
+      {% else %}Mortgage income for your accountant — {{ r.start|d }} to {{ r.end|d }}{% endif %}</div>
   </div>
   <div class="d-flex flex-wrap gap-2 no-print">
     <form method="get" class="d-flex gap-2">
       <select name="month" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Month">
         {% for mo in months %}{% set v = mo.strftime('%Y-%m') %}<option value="{{ v }}" {% if v == selected %}selected{% endif %}>{{ mo.strftime('%B %Y') }}</option>{% endfor %}
       </select>
+      {% if mortgagee_names %}
+      <select name="mortgagee" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Mortgagee">
+        <option value="">Whole book</option>
+        {% for name in mortgagee_names %}<option value="{{ name }}" {% if who == name %}selected{% endif %}>{{ name }}'s share</option>{% endfor %}
+      </select>
+      {% endif %}
     </form>
-    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('reports.annual', year=r.year) }}"><i class="bi bi-calendar3"></i> Annual summary</a>
-    <a class="btn btn-sm btn-success" href="{{ url_for('reports.month_end_xlsx', month=selected) }}"><i class="bi bi-file-earmark-excel"></i> Excel workbook</a>
-    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('reports.month_end_csv', month=selected) }}"><i class="bi bi-filetype-csv"></i> Transactions CSV</a>
+    <a class="btn btn-sm btn-success" href="{{ url_for('reports.month_end_xlsx', month=selected, mortgagee=who or None) }}"><i class="bi bi-file-earmark-excel"></i> Excel workbook</a>
     <button class="btn btn-sm btn-outline-secondary" onclick="window.print()"><i class="bi bi-printer"></i> Print / PDF</button>
-    {% if current_user.is_admin %}
+    {% if current_user.is_admin and not who %}
       {% if closed_through and r.end <= closed_through %}
         <form method="post" action="{{ url_for('reports.reopen_month', month=selected) }}"
               onsubmit="return confirm('Reopen {{ r.label }}{{ ' and every later closed month' if closed_through > r.end else '' }} for changes?')">{{ csrf_field() }}
@@ -35,14 +41,14 @@
   </div>
 </div>
 
-{% if r.bank.unmatched > 0 %}
+{% if r.bank and r.bank.unmatched > 0 %}
 <div class="alert alert-warning d-flex gap-2 align-items-start no-print">
   <i class="bi bi-exclamation-triangle-fill"></i>
   <div>{{ r.bank.unmatched_lines|length }} deposit{{ '' if r.bank.unmatched_lines|length == 1 else 's' }} totalling {{ r.bank.unmatched|money }}
     this month {{ 'is' if r.bank.unmatched_lines|length == 1 else 'are' }} not matched to a mortgage yet.
     <a href="{{ url_for('statements.reconcile', month=selected) }}">Reconcile them</a> before sending this report, or mark them as not mortgage-related.</div>
 </div>
-{% elif not r.bank.count %}
+{% elif r.bank and not r.bank.count %}
 <div class="alert alert-info no-print small mb-3"><i class="bi bi-info-circle"></i> No bank statement has been imported for this month —
   figures come from transactions recorded by hand. <a href="{{ url_for('statements.index') }}">Upload a statement</a> to reconcile.</div>
 {% endif %}
@@ -61,48 +67,49 @@
   <div class="table-responsive">
   <table class="table table-sm mb-0 report-table">
     <thead class="table-light"><tr>
-      <th>Ref</th><th>Borrower</th><th class="num">Rate</th><th class="num">Opening</th><th class="num">Principal repaid</th>
+      <th>Ref</th><th>Borrower</th><th class="num">Rate</th>{% if who %}<th class="num">Share</th>{% endif %}
+      <th class="num">Opening</th><th class="num">Principal repaid</th>
       <th class="num">Closing</th><th class="num">Interest</th><th class="num">Fees</th><th class="num">Income</th>
-      {% if r.has_syndicated %}<th class="num">Your share</th>{% endif %}
-      <th class="num">Accrued</th><th class="num">Scheduled</th><th class="num">Variance</th><th>Status</th></tr></thead>
+      <th class="num">Accrued</th><th class="num">Scheduled</th><th class="num">Received</th><th>Status</th></tr></thead>
     <tbody>
     {% for row in r.rows %}
       <tr>
         <td class="text-nowrap"><a href="{{ url_for('mortgages.detail', mortgage_id=row.m.id) }}">{{ row.m.reference }}</a></td>
         <td>{{ row.m.borrower_name }}{% if row.m.mortgagees %}<div class="small text-secondary">{{ row.m.mortgagees_label }}</div>{% endif %}</td>
         <td class="num">{{ row.rate|pct }}</td>
+        {% if who %}<td class="num">{{ row.share_pct|share }}</td>{% endif %}
         <td class="num">{{ row.opening|money }}</td>
         <td class="num">{{ row.principal|money }}{% if row.advances %}<div class="small text-secondary">+{{ row.advances|money }} advanced</div>{% endif %}</td>
         <td class="num">{{ row.closing|money }}</td>
         <td class="num">{{ row.interest|money }}</td>
         <td class="num">{{ row.fees|money }}</td>
         <td class="num fw-semibold">{{ row.income|money }}</td>
-        {% if r.has_syndicated %}<td class="num">{{ row.your_income|money }} <span class="small text-secondary">({{ row.share_pct|pct(0) }})</span></td>{% endif %}
         <td class="num">{{ row.accrued|money }}</td>
         <td class="num">{{ row.expected|money }}</td>
-        <td class="num">{% if row.variance < 0 %}<i class="bi bi-exclamation-octagon-fill status-critical" title="Short"></i> {% endif %}{{ row.variance|money }}</td>
+        <td class="num">{% if row.regular < row.expected %}<i class="bi bi-exclamation-octagon-fill status-critical" title="Less than scheduled"></i> {% endif %}{{ row.regular|money }}</td>
         <td class="small">{{ row.status }}</td>
       </tr>
     {% else %}
-      <tr><td colspan="14" class="text-center text-secondary py-4">No mortgages were active in {{ r.label }}.</td></tr>
+      <tr><td colspan="14" class="text-center text-secondary py-4">No mortgages{{ ' owned by ' ~ who if who }} were active in {{ r.label }}.</td></tr>
     {% endfor %}
     </tbody>
     {% if r.rows %}
     <tfoot class="table-light fw-semibold"><tr>
-      <td colspan="3">Total</td><td class="num">{{ r.totals.opening|money }}</td><td class="num">{{ r.totals.principal|money }}</td>
+      <td colspan="{{ 4 if who else 3 }}">Total</td><td class="num">{{ r.totals.opening|money }}</td><td class="num">{{ r.totals.principal|money }}</td>
       <td class="num">{{ r.totals.closing|money }}</td><td class="num">{{ r.totals.interest|money }}</td><td class="num">{{ r.totals.fees|money }}</td>
-      <td class="num">{{ r.totals.income|money }}</td>{% if r.has_syndicated %}<td class="num">{{ r.totals.your_income|money }}</td>{% endif %}
+      <td class="num">{{ r.totals.income|money }}</td>
       <td class="num">{{ r.totals.accrued|money }}</td><td class="num">{{ r.totals.expected|money }}</td>
-      <td class="num">{{ r.totals.variance|money }}</td><td></td></tr></tfoot>
+      <td class="num">{{ r.totals.regular|money }}</td><td></td></tr></tfoot>
     {% endif %}
   </table>
   </div>
 </div>
 
 <div class="row g-3 mb-3">
-  <div class="col-xl-8">
+  <div class="{{ 'col-xl-8' if r.bank else 'col-12' }}">
     <div class="card h-100">
-      <div class="card-header bg-white fw-semibold">Transactions ({{ r.transactions|length }})</div>
+      <div class="card-header bg-white fw-semibold">Transactions ({{ r.transactions|length }}){% if who %}
+        <span class="small text-secondary fw-normal">on {{ who }}'s mortgages — full amounts</span>{% endif %}</div>
       <div class="table-responsive">
       <table class="table table-sm mb-0 report-table">
         <thead class="table-light"><tr><th>Date</th><th>Ref</th><th>Borrower</th><th>Type</th><th class="num">Amount</th>
@@ -117,6 +124,7 @@
       </div>
     </div>
   </div>
+  {% if r.bank %}
   <div class="col-xl-4">
     <div class="card h-100">
       <div class="card-header bg-white fw-semibold">Bank reconciliation</div>
@@ -135,10 +143,11 @@
       {% endif %}
     </div>
   </div>
+  {% endif %}
 </div>
 
 <div class="card">
-  <div class="card-header bg-white fw-semibold">Income year to date · {{ r.year }} <span class="small text-secondary fw-normal">interest + fees received</span></div>
+  <div class="card-header bg-white fw-semibold">Income year to date · {{ r.year }} <span class="small text-secondary fw-normal">interest + fees received{{ ' — ' ~ who ~ "'s share" if who }}</span></div>
   <div class="table-responsive">
   <table class="table table-sm mb-0 report-table">
     <thead class="table-light"><tr><th>Ref</th><th>Borrower</th>{% for l in r.ytd.labels %}<th class="num">{{ l }}</th>{% endfor %}<th class="num">Total</th></tr></thead>

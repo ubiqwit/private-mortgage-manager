@@ -7,18 +7,10 @@ from openpyxl import load_workbook
 from app import db
 from app.models import BankTransaction, MortgageTransaction, StatementImport
 from app.services import reports
-from app.services.safety import csv_safe
 
 from .test_mortgages import create
 
 EVIL = '=HYPERLINK("http://evil.example","click")'
-
-
-def test_csv_safe():
-    assert csv_safe(EVIL).startswith("'=")
-    assert csv_safe("-5 cash") == "'-5 cash"
-    assert csv_safe("E-TRANSFER") == "E-TRANSFER"
-    assert csv_safe(12) == 12
 
 
 def test_exports_never_contain_live_formulas_from_bank_text(client):
@@ -31,7 +23,6 @@ def test_exports_never_contain_live_formulas_from_bank_text(client):
                                                      principal=0, fees=0, bank_transaction=bt, notes=EVIL)])
     db.session.commit()
     r = reports.month_end_report(2026, 2)
-    assert "'=HYPERLINK" in reports.transactions_csv(r)
     wb = load_workbook(io.BytesIO(reports.month_end_workbook(r)))
     cells = [c for row in wb["Transactions"].iter_rows() for c in row if c.value == EVIL]
     assert cells and all(c.data_type == "s" for c in cells)
