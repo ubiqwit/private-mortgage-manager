@@ -281,15 +281,12 @@ def detail(mortgage_id):
         last_payment=m.last_payment(),
         days_to_maturity=m.days_to_maturity(),
         ytd=m.income_between(year_start, local_today()),
-        lifetime=m.income_between(m.funded_date, local_today()),
-        annual_interest=calc.money(m.balance() * m.effective_rate(prime) / 100),
     )
-    from ..services.history import payment_history, summary
+    from ..services.history import payment_history
 
     history = payment_history(m, local_today(), prime)
     return render_template("mortgages/detail.html", m=m, s=stats, prime=prime, txn_types=TXN_TYPES,
-                           history=history, history_summary=summary(history),
-                           transactions=list(reversed(m.transactions)))
+                           history=history, transactions=list(reversed(m.transactions)))
 
 
 @bp.route("/<int:mortgage_id>/schedule")

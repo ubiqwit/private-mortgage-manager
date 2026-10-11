@@ -2,7 +2,7 @@ from datetime import date
 
 from app import db
 from app.models import Mortgage
-from app.services.history import payment_history, summary
+from app.services.history import payment_history
 
 from .test_mortgages import create
 
@@ -23,8 +23,6 @@ def test_on_time_late_missed(client):
     assert status == {2: "on_time", 3: "late", 4: "on_time", 5: "missed", 6: "pending", 7: "upcoming"}
     late = [r for r in rows if r.status == "late"][0]
     assert late.days_late == 19
-    s = summary(rows)
-    assert (s["on_time"], s["late"], s["missed"], s["on_time_pct"]) == (2, 1, 1, 50)
     assert b"Payment history" in client.get(f"/mortgages/{m.id}").data
 
 

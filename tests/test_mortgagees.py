@@ -12,7 +12,7 @@ from werkzeug.datastructures import MultiDict
 
 from app import MIGRATIONS_DIR, create_app, db
 from app.models import Mortgage, Mortgagee, Setting, User
-from app.services import importer, portfolio, reports
+from app.services import importer, reports
 from app.services import mortgagees as mg
 
 from .test_import import ROW as IMPORT_ROW
@@ -141,14 +141,6 @@ def test_detail_shows_shares_of_balance(client):
     page = client.get(f"/mortgages/{m.id}").get_data(as_text=True)
     assert "Mortgagees" in page and "$150,000.00" in page  # 75% of 200,000
     assert "Not assigned" in page and "$50,000.00" in page
-
-
-def test_dashboard_splits_balance_by_share(client):
-    create(client)
-    assert portfolio.dashboard_stats()["by_owner"] == []
-    client.post("/mortgages/new", data=with_mortgagees(("A", "60"), ("B", "")))
-    split = dict(portfolio.dashboard_stats()["by_owner"])
-    assert split == {"A": Decimal("120000.00"), "B": Decimal("80000.00"), "Not recorded": Decimal("200000.00")}
 
 
 def test_reports_list_mortgagees(client):

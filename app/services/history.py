@@ -57,11 +57,3 @@ def payment_history(m, as_of: date, prime=None, upcoming: int = 1) -> list[DueSt
     out += [DueStatus(d, m.scheduled_payment(d, prime), "upcoming") for d in future]
     return out
 
-
-def summary(rows: list[DueStatus]) -> dict:
-    counts = {k: 0 for k in ("on_time", "late", "missed", "pending", "upcoming")}
-    for r in rows:
-        counts[r.status] += 1
-    settled = counts["on_time"] + counts["late"] + counts["missed"]
-    counts["on_time_pct"] = round(counts["on_time"] * 100 / settled) if settled else None
-    return counts

@@ -47,7 +47,6 @@
         {{ row('First payment', m.first_payment_date|d) }}
         {{ row('Term', (m.term_months ~ ' months') if m.term_months else none) }}
         {{ row('Amortization', (m.amortization_months ~ ' months') if m.amortization_months else none) }}
-        {{ row('Annual interest at current balance', s.annual_interest|money) }}
         {{ row('Your share', m.ownership_pct|pct(0)) }}
         {{ row('Prepayment', m.prepayment_terms) }}
       </table>
@@ -118,19 +117,13 @@
   </div>
 
   <div class="col-lg-8">
-    <div class="row g-3 mb-3">
-      <div class="col-md-6"><div class="card p-3 h-100">
-        <div class="stat-label small text-uppercase text-secondary">Received year to date</div>
-        <div class="d-flex justify-content-between mt-1"><span>Interest</span><span class="num">{{ s.ytd.interest|money }}</span></div>
-        <div class="d-flex justify-content-between"><span>Fees</span><span class="num">{{ s.ytd.fees|money }}</span></div>
-        <div class="d-flex justify-content-between"><span>Principal</span><span class="num">{{ s.ytd.principal|money }}</span></div>
-      </div></div>
-      <div class="col-md-6"><div class="card p-3 h-100">
-        <div class="stat-label small text-uppercase text-secondary">Since funding</div>
-        <div class="d-flex justify-content-between mt-1"><span>Interest</span><span class="num">{{ s.lifetime.interest|money }}</span></div>
-        <div class="d-flex justify-content-between"><span>Fees</span><span class="num">{{ s.lifetime.fees|money }}</span></div>
-        <div class="d-flex justify-content-between"><span>Principal</span><span class="num">{{ s.lifetime.principal|money }}</span></div>
-      </div></div>
+    <div class="card p-3 mb-3">
+      <div class="stat-label small text-uppercase text-secondary">Received this year</div>
+      <div class="d-flex flex-wrap gap-4 mt-1">
+        <span>Interest <span class="num fw-semibold">{{ s.ytd.interest|money }}</span></span>
+        <span>Fees <span class="num fw-semibold">{{ s.ytd.fees|money }}</span></span>
+        <span>Principal <span class="num fw-semibold">{{ s.ytd.principal|money }}</span></span>
+      </div>
     </div>
 
     {% if history %}
@@ -138,12 +131,7 @@
                     'missed': ('bi-x-circle-fill status-critical', 'Missed'), 'pending': ('bi-hourglass-split text-secondary', 'Due — within grace period'),
                     'upcoming': ('bi-circle text-secondary', 'Upcoming')} %}
     <div class="card mb-3">
-      <div class="card-header bg-white d-flex flex-wrap justify-content-between gap-2">
-        <span class="fw-semibold">Payment history</span>
-        <span class="small text-secondary">
-          {% if history_summary.on_time_pct is not none %}{{ history_summary.on_time_pct }}% on time · {% endif %}
-          {{ history_summary.on_time }} on time · {{ history_summary.late }} late · {{ history_summary.missed }} missed</span>
-      </div>
+      <div class="card-header bg-white fw-semibold">Payment history</div>
       <div class="card-body d-flex flex-wrap gap-1 pay-grid">
         {% for h in history %}
           {% set icon, label = icons[h.status] %}
