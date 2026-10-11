@@ -48,25 +48,18 @@
   <div class="form-section">Borrower</div>
   <div class="row g-3">
     {{ field('reference', 'Reference', col='col-md-2') }}
-    {{ field('borrower_name', 'Borrower name(s)', col='col-md-4', required=True) }}
-    {{ field('borrower_email', 'Email', 'email', col='col-md-3') }}
-    {{ field('borrower_phone', 'Phone', col='col-md-3') }}
-    {{ field('guarantors', 'Guarantors', col='col-md-6') }}
+    {{ field('borrower_name', 'Borrower name(s)', col='col-md-6', required=True) }}
   </div>
   {% endif %}
 
   {% if section_shown["Security (property)"] %}
   <div class="form-section">Security (property)</div>
   <div class="row g-3">
-    {{ field('property_address', 'Street address', col='col-md-5', required=True) }}
+    {{ field('property_address', 'Street address', col='col-md-6', required=True) }}
     {{ field('property_city', 'City', col='col-md-3') }}
-    {{ field('property_province', 'Province', col='col-md-1') }}
-    {{ select('property_type', 'Property type', property_types, col='col-md-3') }}
     {{ field('property_value', 'Property value ($)', 'number', 'col-md-3', step='0.01') }}
-    {{ field('appraisal_date', 'Appraisal date', 'date', 'col-md-3') }}
-    {{ select('position', 'Charge position', [(1,'1st'),(2,'2nd'),(3,'3rd')], col='col-md-2') }}
-    {{ field('prior_charges', 'Prior charges balance ($)', 'number', 'col-md-2', help='Mortgages ranking ahead of yours', step='0.01') }}
-    {{ field('pin', 'PIN / legal ref.', col='col-md-2') }}
+    {{ select('position', 'Charge position', [(1,'1st'),(2,'2nd'),(3,'3rd')], col='col-md-3') }}
+    {{ field('prior_charges', 'Prior charges balance ($)', 'number', 'col-md-3', help='Mortgages ranking ahead of yours', step='0.01') }}
   </div>
   {% endif %}
 
@@ -90,7 +83,6 @@
     {{ field('first_payment_date', 'First payment date', 'date', 'col-md-3', help='Blank = one month after funding') }}
     {{ field('term_months', 'Term (months)', 'number', 'col-md-3') }}
     {{ field('maturity_date', 'Maturity date', 'date', 'col-md-3', help='Blank = funded date + term') }}
-    {{ field('ownership_pct', 'Your share (%)', 'number', 'col-md-3', help='Less than 100 if syndicated', step='0.01') }}
     {{ select('status', 'Status', statuses, col='col-md-3') }}
     {% if 'mortgagees' in show %}
     <div class="col-12" id="mortgagees">
@@ -110,18 +102,11 @@
   </div>
   {% endif %}
 
-  {% if section_shown["Fees & parties"] %}
-  <div class="form-section">Fees &amp; parties</div>
+  {% if section_shown["Fees & broker"] %}
+  <div class="form-section">Fees &amp; broker</div>
   <div class="row g-3">
-    {{ field('lender_fee', 'Lender fee ($)', 'number', 'col-md-2', step='0.01') }}
-    {{ field('renewal_fee', 'Renewal fee ($)', 'number', 'col-md-2', step='0.01') }}
-    {{ field('nsf_fee', 'NSF fee ($)', 'number', 'col-md-2', step='0.01') }}
-    {{ field('broker_name', 'Broker / brokerage', col='col-md-3') }}
-    {{ field('broker_fee', 'Broker fee ($)', 'number', 'col-md-3', step='0.01') }}
-    {{ field('lawyer_name', 'Lawyer', col='col-md-4') }}
-    {{ field('prepayment_terms', 'Prepayment terms', col='col-md-8', help='e.g. "Open after 6 months" or "3 months interest penalty"') }}
-    {{ field('insurance_expiry', 'Insurance expiry', 'date', 'col-md-3') }}
-    {{ field('property_tax_status', 'Property tax status', col='col-md-4') }}
+    {{ field('lender_fee', 'Lender fee ($)', 'number', 'col-md-3', step='0.01') }}
+    {{ field('broker_name', 'Broker / group', col='col-md-4', help='The brokerage or group it came through, e.g. Olympia Mortgages') }}
     {% if not m.id and 'lender_fee' in show %}
     <div class="col-md-5 d-flex align-items-end">
       <div class="form-check">

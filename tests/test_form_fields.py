@@ -10,10 +10,10 @@ from .test_mortgages import BASE, create
 
 def test_default_shows_everything_and_presets_hide_fields(client):
     page = client.get("/mortgages/new").data
-    assert b'name="guarantors"' in page and b'name="pin"' in page
+    assert b'name="broker_name"' in page and b'name="prior_charges"' in page
     client.post("/account/fields", data={"preset": "simple"})
     page = client.get("/mortgages/new").data
-    assert b'name="guarantors"' not in page and b'name="pin"' not in page and b"Fees &amp; parties" in page
+    assert b'name="broker_name"' not in page and b'name="prior_charges"' not in page and b"Fees &amp; broker" in page
     for required in ff.REQUIRED:
         assert f'name="{required}"'.encode() in page
     assert b"Simple form" in page
@@ -21,13 +21,13 @@ def test_default_shows_everything_and_presets_hide_fields(client):
 
 
 def test_hidden_fields_keep_their_values_on_edit(client):
-    m = create(client, guarantors="Pat Smith", pin="12345-0001")
+    m = create(client, broker_name="Olympia Mortgages", prior_charges="50000")
     client.post("/account/fields", data={"preset": "simple"})
     simple = {k: v for k, v in BASE.items() if k in ff.SIMPLE}
     resp = client.post(f"/mortgages/{m.id}/edit", data={**simple, "interest_rate": "11"})
     assert resp.status_code == 302
     m = db.session.get(Mortgage, m.id)
-    assert m.interest_rate == Decimal("11") and m.guarantors == "Pat Smith" and m.pin == "12345-0001"
+    assert m.interest_rate == Decimal("11") and m.broker_name == "Olympia Mortgages" and m.prior_charges == 50000
 
 
 def test_new_mortgage_with_simple_form_uses_defaults(client):
@@ -39,9 +39,9 @@ def test_new_mortgage_with_simple_form_uses_defaults(client):
 
 
 def test_custom_choice_and_required_always_kept(client):
-    client.post("/account/fields", data={"fields": ["guarantors"]})
+    client.post("/account/fields", data={"fields": ["broker_name"]})
     user = User.query.filter_by(email="owner@example.com").one()
-    assert ff.visible_fields(user) == ff.REQUIRED | {"guarantors"}
+    assert ff.visible_fields(user) == ff.REQUIRED | {"broker_name"}
     assert ff.preset_name(user) is None
 
 

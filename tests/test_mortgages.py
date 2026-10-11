@@ -131,10 +131,10 @@ def test_edit(client):
 def test_renewal_keeps_past_terms(client):
     from app.services import reports
 
-    m = create(client, record_lender_fee="", renewal_fee="1000")  # 10% to Jan 1 2027, $1,666.67/mo
+    m = create(client, record_lender_fee="")  # 10% to Jan 1 2027, $1,666.67/mo
     resp = client.post(f"/mortgages/{m.id}/renew", data={
         "effective_date": "2027-01-01", "rate_type": "fixed", "interest_rate": "12", "term_months": "12",
-        "renewal_fee": "1000", "record_fee": "1",
+        "renewal_fee": "1000",
     })
     assert resp.status_code == 302
     m = db.session.get(Mortgage, m.id)

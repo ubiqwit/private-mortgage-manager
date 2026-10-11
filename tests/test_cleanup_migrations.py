@@ -70,3 +70,39 @@ def test_no_documents_means_no_archive_table(tmp_path):
     app = _app(tmp_path, "empty.db")
     with app.app_context():
         assert "archived_mortgage_document" not in sa.inspect(db.engine).get_table_names()
+
+
+def test_removed_mortgage_fields_are_kept_in_notes(tmp_path):
+    app = _app(tmp_path, "fields.db")
+    with app.app_context():
+        a, b = _mortgage("M-001", notes="Called on the 3rd"), _mortgage("M-002")
+        db.session.commit()
+        ids = a.id, b.id
+        db.session.remove()
+
+        downgrade(directory=MIGRATIONS_DIR, revision="f76c7f101309")  # before the fields were removed
+        with db.engine.begin() as conn:
+            conn.execute(sa.text(
+                "UPDATE mortgage SET borrower_email = 'jane@example.com', borrower_phone = '416-555-0100', "
+                "guarantors = 'Pat Smith', property_province = 'BC', property_type = 'commercial', "
+                "appraisal_date = '2025-12-01', pin = '12345-0001', ownership_pct = 50, broker_fee = 2500, "
+                "lawyer_name = 'Walsh Legal', renewal_fee = 1000, nsf_fee = 300, "
+                "prepayment_terms = 'Open after 3 months', insurance_expiry = '2026-11-30', "
+                "property_tax_status = 'Paid to date' WHERE id = :id"), {"id": ids[0]})
+            # The defaults (Ontario, detached, 100%, no fees) aren't worth carrying over.
+            conn.execute(sa.text(
+                "UPDATE mortgage SET property_province = 'ON', property_type = 'detached', ownership_pct = 100, "
+                "broker_fee = 0, renewal_fee = 0, nsf_fee = 0 WHERE id = :id"), {"id": ids[1]})
+
+        upgrade(directory=MIGRATIONS_DIR)
+        db.session.remove()
+        notes = {m.reference: m.notes for m in Mortgage.query.all()}
+        assert notes["M-001"] == (
+            "Called on the 3rd\n\nOther details:\n"
+            "Email: jane@example.com\nPhone: 416-555-0100\nGuarantors: Pat Smith\nProvince: BC\n"
+            "Property type: Commercial\nAppraisal date: 2025-12-01\nPIN / legal: 12345-0001\nYour share: 50%\n"
+            "Broker fee: $2,500.00\nLawyer: Walsh Legal\nRenewal fee: $1,000.00\nNSF fee: $300.00\n"
+            "Prepayment terms: Open after 3 months\nInsurance expiry: 2026-11-30\nProperty tax: Paid to date")
+        assert notes["M-002"] is None
+        columns = {c["name"] for c in sa.inspect(db.engine).get_columns("mortgage")}
+        assert not columns & {"borrower_email", "property_type", "ownership_pct", "insurance_expiry"}

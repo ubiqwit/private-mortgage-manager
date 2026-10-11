@@ -26,7 +26,7 @@ def post(client, content, name="book.csv"):
 
 
 ROW = {"Borrower name": "Jane Smith", "Property address": "12 Maple Ave", "Principal": "250,000", "Rate %": "10.99",
-       "Funded date": "01/02/2026", "Term months": "12", "Property type": "Semi-detached", "Rate type": "Fixed",
+       "Funded date": "01/02/2026", "Term months": "12", "Rate type": "Fixed",
        "Compounding": "Semi-annual", "Payment type": "Interest only", "Payment frequency": "Bi-weekly",
        "Position": "2nd", "Bank keywords": "E-TRANSFER JANE; J SMITH", "Status": "Active"}
 
@@ -43,7 +43,7 @@ def test_import_csv_with_friendly_values(client):
                                        "Current balance": "200000", "Balance as of": "2026-06-30"}))
     assert resp.status_code == 302
     jane = Mortgage.query.filter_by(borrower_name="Jane Smith").one()
-    assert jane.reference == "M-001" and jane.property_type == "semi" and jane.compounding == "semi_annual"
+    assert jane.reference == "M-001" and jane.compounding == "semi_annual"
     assert jane.payment_frequency == "biweekly" and jane.position == 2 and jane.funded_date == date(2026, 1, 2)
     assert jane.keywords == ["E-TRANSFER JANE", "J SMITH"]
     bob = Mortgage.query.filter_by(reference="B-7").one()
@@ -79,3 +79,11 @@ def test_import_xlsx_template_ignores_example_row(client):
     assert resp.status_code == 302
     assert [m.borrower_name for m in Mortgage.query.all()] == ["Excel Person"]
     assert db.session.query(Mortgage).one().term_months == 12
+
+
+def test_template_example_row_uses_real_columns():
+    headers = {h for h, _, _ in importer.COLUMNS}
+    assert set(importer.EXAMPLE) <= headers
+    removed = {"Borrower email", "Borrower phone", "Province", "Property type", "Appraisal date", "Your share %",
+               "Broker fee", "Lawyer", "Renewal fee", "NSF fee", "Insurance expiry"}
+    assert not headers & removed

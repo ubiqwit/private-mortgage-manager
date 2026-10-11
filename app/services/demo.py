@@ -28,9 +28,9 @@ STREETS = ["Maple Ave", "Lakeshore Rd W", "Queen St E", "Birchwood Crt", "Elm Gr
 CITIES = ["Toronto", "Mississauga", "Brampton", "Oakville", "Markham", "Vaughan", "Hamilton", "Burlington",
           "Richmond Hill", "Pickering", "Kitchener", "Barrie"]
 BROKERS = ["Mortgage Alliance", "Dominion Lending Centres", "Mortgage Architects", "Private referral", "Verico"]
-LAWYERS = ["Chen & Associates LLP", "Rossi Law Professional Corp.", "Singh Real Estate Law", "Walsh Legal"]
+NSF_FEE = Decimal("300.00")
 
-# Each profile: property type, position, rate type, payment type, frequency, term, how it behaves.
+# Each profile: kind of property (sets its value), position, rate type, payment type, frequency, term, behaviour.
 PROFILES = [
     ("detached", 1, "fixed", "interest_only", "monthly", 12, "good"),
     ("semi", 2, "fixed", "interest_only", "monthly", 12, "late"),
@@ -115,10 +115,8 @@ def load_demo(today: date, count: int = 20, user=None, seed: int = 7) -> int:
         city = CITIES[(i * 5) % len(CITIES)]
         m = Mortgage(
             reference=f"{PREFIX}{i + 1:02d}", borrower_name=borrower, created_by=user,
-            borrower_email=f"{borrower.split()[0].lower()}@example.com", borrower_phone=f"416-555-{1000 + i * 37:04d}",
             property_address=f"{rnd.randint(2, 980)} {STREETS[(i * 3 + i // 5) % len(STREETS)]}", property_city=city,
-            property_province="ON", property_type=ptype, property_value=value, appraisal_date=funded - timedelta(days=20),
-            position=position, prior_charges=prior, principal_amount=principal, interest_rate=rate,
+            property_value=value, position=position, prior_charges=prior, principal_amount=principal, interest_rate=rate,
             rate_type=rate_type, prime_spread=Decimal("5.00") if rate_type == "variable" else None,
             rate_floor=Decimal("9.50") if rate_type == "variable" else None,
             compounding="semi_annual" if pay_type == "amortizing" else "monthly", payment_type=pay_type,
@@ -126,13 +124,7 @@ def load_demo(today: date, count: int = 20, user=None, seed: int = 7) -> int:
             funded_date=funded,
             first_payment_date=funded + (relativedelta(months=1) if freq == "monthly" else timedelta(days=14)),
             term_months=term, maturity_date=funded + relativedelta(months=term),
-            ownership_pct=Decimal(50) if i in (4, 15) else Decimal(100),
             lender_fee=_money(principal * Decimal("0.02")), broker_name=BROKERS[i % len(BROKERS)],
-            broker_fee=_money(principal * Decimal("0.01")), lawyer_name=LAWYERS[i % len(LAWYERS)],
-            renewal_fee=_money(principal * Decimal("0.0075")), nsf_fee=Decimal("300.00"),
-            prepayment_terms=rnd.choice(["Open after 3 months", "Closed; 3 months' interest penalty", "Fully open"]),
-            insurance_expiry=today + timedelta(days=rnd.choice([-10, 12, 45, 120, 200, 290, 340])),
-            property_tax_status=rnd.choice(["Paid to date", "Paid to date", "Instalments current", "Arrears noted"]),
             status="active", match_keywords=f"E-TRANSFER {borrower.split()[0].upper()}",
             notes="Sample mortgage for trying the app. Remove with Users & data → Remove demo data.",
         )
@@ -176,7 +168,7 @@ def load_demo(today: date, count: int = 20, user=None, seed: int = 7) -> int:
                     catch_up = bounce + timedelta(days=9)
                     if catch_up < today:
                         _pay(m, catch_up, pay, notes="Replacement for NSF payment")
-                        _fee(m, catch_up, m.nsf_fee, "NSF fee")
+                        _fee(m, catch_up, NSF_FEE, "NSF fee")
                 if behaviour == "prepay" and not prepay_done and n >= 6:
                     prepay_done = True
                     extra = _money(m.balance(as_of=paid_on) * Decimal("0.15"))
@@ -200,7 +192,7 @@ def load_demo(today: date, count: int = 20, user=None, seed: int = 7) -> int:
             if m.rate_type == "fixed":
                 m.interest_rate = Decimal(m.interest_rate) + Decimal(rnd.choice(["-0.50", "-0.25", "0", "0.25", "0.50"]))
             m.maturity_date = effective + relativedelta(months=m.term_months)
-            _fee(m, effective, m.renewal_fee, "Renewal fee")
+            _fee(m, effective, _money(m.principal_amount * Decimal("0.0075")), "Renewal fee")
             start = effective + timedelta(days=1)  # the renewal-date payment belongs to the old term
         if behaviour == "arrears" and m.status == "active":
             m.status = "in_arrears"

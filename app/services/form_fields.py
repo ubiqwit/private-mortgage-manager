@@ -9,14 +9,10 @@ import json
 
 # (section, [(field, label), …]) in form order.
 GROUPS = [
-    ("Borrower", [
-        ("reference", "Reference"), ("borrower_name", "Borrower name"), ("borrower_email", "Email"),
-        ("borrower_phone", "Phone"), ("guarantors", "Guarantors"),
-    ]),
+    ("Borrower", [("reference", "Reference"), ("borrower_name", "Borrower name")]),
     ("Security (property)", [
-        ("property_address", "Street address"), ("property_city", "City"), ("property_province", "Province"),
-        ("property_type", "Property type"), ("property_value", "Property value"), ("appraisal_date", "Appraisal date"),
-        ("position", "Charge position"), ("prior_charges", "Prior charges balance"), ("pin", "PIN / legal ref."),
+        ("property_address", "Street address"), ("property_city", "City"), ("property_value", "Property value"),
+        ("position", "Charge position"), ("prior_charges", "Prior charges balance"),
     ]),
     ("Loan terms", [
         ("principal_amount", "Principal advanced"), ("rate_type", "Rate type (fixed / variable)"),
@@ -24,29 +20,23 @@ GROUPS = [
         ("compounding", "Compounding"), ("payment_type", "Payment type"), ("payment_frequency", "Payment frequency"),
         ("amortization_months", "Amortization"), ("payment_amount", "Payment amount"),
         ("funded_date", "Funded date"), ("first_payment_date", "First payment date"), ("term_months", "Term (months)"),
-        ("maturity_date", "Maturity date"), ("ownership_pct", "Your share (%)"), ("mortgagees", "Mortgagees (who owns it, with %)"), ("status", "Status"),
+        ("maturity_date", "Maturity date"), ("mortgagees", "Mortgagees (who owns it, with %)"), ("status", "Status"),
     ]),
-    ("Fees & parties", [
-        ("lender_fee", "Lender fee"), ("renewal_fee", "Renewal fee"), ("nsf_fee", "NSF fee"),
-        ("broker_name", "Broker"), ("broker_fee", "Broker fee"), ("lawyer_name", "Lawyer"),
-        ("prepayment_terms", "Prepayment terms"), ("insurance_expiry", "Insurance expiry"),
-        ("property_tax_status", "Property tax status"),
-    ]),
+    ("Fees & broker", [("lender_fee", "Lender fee"), ("broker_name", "Broker / group")]),
     ("Bank matching & notes", [("match_keywords", "Bank description keywords"), ("notes", "Notes")]),
 ]
 ALL_FIELDS = [f for _, fields in GROUPS for f, _ in fields]
 # Always shown: the app can't create a mortgage without them.
 REQUIRED = {"borrower_name", "property_address", "principal_amount", "interest_rate", "funded_date", "term_months"}
 
-SIMPLE = REQUIRED | {"borrower_phone", "property_city", "property_value", "position", "lender_fee", "mortgagees", "notes"}
+SIMPLE = REQUIRED | {"property_city", "property_value", "position", "lender_fee", "mortgagees", "notes"}
 STANDARD = SIMPLE | {
-    "borrower_email", "property_type", "prior_charges", "rate_type", "prime_spread", "rate_floor", "payment_type",
-    "payment_frequency", "amortization_months", "maturity_date", "status", "broker_name", "broker_fee",
-    "lawyer_name", "insurance_expiry", "match_keywords",
+    "prior_charges", "rate_type", "prime_spread", "rate_floor", "payment_type", "payment_frequency",
+    "amortization_months", "maturity_date", "status", "broker_name", "match_keywords",
 }
 PRESETS = {
-    "simple": ("Simple", "Just the essentials: borrower, address, amount, rate, dates, lender fee", SIMPLE),
-    "standard": ("Standard", "Adds rate type, payment options, broker, lawyer, insurance and status", STANDARD),
+    "simple": ("Simple", "Just the essentials: borrower, address, amount, rate, dates, lender fee, mortgagees", SIMPLE),
+    "standard": ("Standard", "Adds prior charges, rate type, payment options, broker and status", STANDARD),
     "everything": ("Everything", "Every field the app supports", set(ALL_FIELDS)),
 }
 

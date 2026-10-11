@@ -9,7 +9,6 @@ from sqlalchemy import or_
 from .. import db
 from ..models import (
     OPEN_STATUSES,
-    PROPERTY_TYPES,
     STATUSES,
     TXN_TYPES,
     Mortgage,
@@ -30,15 +29,13 @@ bp = Blueprint("mortgages", __name__, url_prefix="/mortgages")
 
 DECIMAL_FIELDS = [
     "property_value", "prior_charges", "principal_amount", "interest_rate", "prime_spread", "rate_floor",
-    "payment_amount", "ownership_pct", "lender_fee", "broker_fee", "renewal_fee", "nsf_fee",
+    "payment_amount", "lender_fee",
 ]
 INT_FIELDS = ["position", "amortization_months", "term_months"]
-DATE_FIELDS = ["appraisal_date", "funded_date", "first_payment_date", "maturity_date", "insurance_expiry"]
+DATE_FIELDS = ["funded_date", "first_payment_date", "maturity_date"]
 TEXT_FIELDS = [
-    "reference", "borrower_name", "borrower_email", "borrower_phone", "guarantors", "property_address",
-    "property_city", "property_province", "property_type", "pin", "rate_type", "compounding", "payment_type",
-    "payment_frequency", "broker_name", "lawyer_name", "prepayment_terms", "property_tax_status", "status",
-    "match_keywords", "notes",
+    "reference", "borrower_name", "property_address", "property_city", "rate_type", "compounding", "payment_type",
+    "payment_frequency", "broker_name", "status", "match_keywords", "notes",
 ]
 REQUIRED = {
     "borrower_name": "Borrower name",
@@ -109,8 +106,6 @@ def apply_form(m: Mortgage, form):
         raise FormError("Amortizing mortgages need an amortization period or a fixed payment amount")
     if not m.reference:
         m.reference = next_reference()
-    if m.ownership_pct is None:
-        m.ownership_pct = Decimal(100)
     if m.position is None:
         m.position = 1
 
@@ -131,7 +126,6 @@ def form_context(m):
         section_shown={name: any(f in show for f, _ in fields) for name, fields in form_fields.GROUPS},
         preset_label=form_fields.PRESETS[preset][0] if preset else None,
         m=m,
-        property_types=PROPERTY_TYPES,
         statuses=STATUSES,
         frequencies=list(calc.FREQUENCIES),
         compounding=list(calc.COMPOUNDING),
@@ -197,8 +191,7 @@ def index():
 @bp.route("/new", methods=["GET", "POST"])
 def new():
     m = Mortgage(status="active", rate_type="fixed", compounding="monthly", payment_type="interest_only",
-                 payment_frequency="monthly", position=1, property_province="ON", property_type="detached",
-                 ownership_pct=Decimal(100))
+                 payment_frequency="monthly", position=1)
     if request.method == "POST":
         try:
             apply_form(m, request.form)
@@ -437,10 +430,8 @@ def renew(mortgage_id):
     if m.status == "matured":
         m.status = "active"
     if fee:
-        m.renewal_fee = fee
-        if f.get("record_fee"):
-            db.session.add(MortgageTransaction(mortgage=m, date=effective, type="fee", amount=calc.money(fee),
-                                               fees=calc.money(fee), interest=0, principal=0, notes="Renewal fee"))
+        db.session.add(MortgageTransaction(mortgage=m, date=effective, type="fee", amount=calc.money(fee),
+                                           fees=calc.money(fee), interest=0, principal=0, notes="Renewal fee"))
     line = (f"{local_today():%Y-%m-%d}: renewed from {effective:%b %d, %Y} — was {old}; now "
             f"{m.effective_rate(latest_prime(), on=effective):.2f}% to {new_maturity:%b %d, %Y}")
     m.notes = ((m.notes or "").rstrip() + "\n" + line).strip()
@@ -533,8 +524,7 @@ def import_book():
     with db.session.no_autoflush:
         for n, form in rows:
             m = Mortgage(status="active", rate_type="fixed", compounding="monthly", payment_type="interest_only",
-                         payment_frequency="monthly", position=1, property_province="ON", property_type="detached",
-                         ownership_pct=Decimal(100))
+                         payment_frequency="monthly", position=1)
             try:
                 if form.get("reference") and (form["reference"] in taken or form["reference"] in refs):
                     raise FormError(f"Reference {form['reference']} already exists")

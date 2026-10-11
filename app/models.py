@@ -23,17 +23,6 @@ from .timeutil import utcnow
 
 ZERO = Decimal("0.00")
 
-PROPERTY_TYPES = [
-    ("detached", "Detached"),
-    ("semi", "Semi-detached"),
-    ("townhouse", "Townhouse"),
-    ("condo", "Condo"),
-    ("multi_unit", "Multi-unit residential"),
-    ("commercial", "Commercial"),
-    ("mixed_use", "Mixed use"),
-    ("land", "Vacant land"),
-    ("other", "Other"),
-]
 STATUSES = [
     ("active", "Active"),
     ("in_arrears", "In arrears"),
@@ -69,20 +58,13 @@ class Mortgage(TimestampMixin, db.Model):
 
     # Borrower
     borrower_name = db.Column(db.String(200), nullable=False)
-    borrower_email = db.Column(db.String(200))
-    borrower_phone = db.Column(db.String(50))
-    guarantors = db.Column(db.String(300))
 
     # Security
     property_address = db.Column(db.String(300), nullable=False)
     property_city = db.Column(db.String(100))
-    property_province = db.Column(db.String(50), default="ON")
-    property_type = db.Column(db.String(30), default="detached")
     property_value = db.Column(db.Numeric(14, 2))
-    appraisal_date = db.Column(db.Date)
     position = db.Column(db.Integer, default=1)  # 1st, 2nd, 3rd charge
     prior_charges = db.Column(db.Numeric(14, 2), default=0)  # balance of charges ranking ahead
-    pin = db.Column(db.String(50))  # land registry PIN / legal description reference
 
     # Loan terms
     principal_amount = db.Column(db.Numeric(14, 2), nullable=False)
@@ -99,18 +81,9 @@ class Mortgage(TimestampMixin, db.Model):
     first_payment_date = db.Column(db.Date, nullable=False)
     term_months = db.Column(db.Integer)
     maturity_date = db.Column(db.Date, nullable=False)
-    ownership_pct = db.Column(db.Numeric(6, 2), default=100)  # your share if syndicated
 
-    # Fees & parties
     lender_fee = db.Column(db.Numeric(12, 2), default=0)
-    broker_name = db.Column(db.String(200))
-    broker_fee = db.Column(db.Numeric(12, 2), default=0)
-    lawyer_name = db.Column(db.String(200))
-    renewal_fee = db.Column(db.Numeric(12, 2), default=0)
-    nsf_fee = db.Column(db.Numeric(12, 2), default=0)
-    prepayment_terms = db.Column(db.String(300))
-    insurance_expiry = db.Column(db.Date)
-    property_tax_status = db.Column(db.String(100))
+    broker_name = db.Column(db.String(200))  # brokerage / group the mortgage came through
 
     status = db.Column(db.String(20), default="active", nullable=False)
     match_keywords = db.Column(db.Text)  # one per line; used to match bank deposits
@@ -173,10 +146,6 @@ class Mortgage(TimestampMixin, db.Model):
     @property
     def display_status_label(self):
         return dict(STATUSES).get(self.display_status, self.display_status)
-
-    @property
-    def property_type_label(self):
-        return dict(PROPERTY_TYPES).get(self.property_type, self.property_type)
 
     @property
     def is_open(self):

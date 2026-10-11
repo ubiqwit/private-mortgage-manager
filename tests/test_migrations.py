@@ -7,6 +7,14 @@ from app import create_app, db
 # Tables added by migrations after the baseline revision (keep in sync when adding tables).
 POST_BASELINE_TABLES = ["term_history", "mortgagee"]
 POST_BASELINE_COLUMNS = [("user", "form_fields"), ("mortgage", "created_by_id")]
+# Columns the baseline had that later migrations removed (the old database still has them).
+REMOVED_COLUMNS = [("mortgage", c) for c in (
+    "borrower_email VARCHAR(200)", "borrower_phone VARCHAR(50)", "guarantors VARCHAR(300)",
+    "property_province VARCHAR(50)", "property_type VARCHAR(30)", "appraisal_date DATE", "pin VARCHAR(50)",
+    "ownership_pct NUMERIC(6, 2)", "broker_fee NUMERIC(12, 2)", "lawyer_name VARCHAR(200)",
+    "renewal_fee NUMERIC(12, 2)", "nsf_fee NUMERIC(12, 2)", "prepayment_terms VARCHAR(300)",
+    "insurance_expiry DATE", "property_tax_status VARCHAR(100)",
+)]
 
 
 def test_migrations_match_models(tmp_path):
@@ -30,6 +38,8 @@ def test_legacy_database_without_migration_history_is_adopted(tmp_path):
     with legacy.app_context():
         for table in POST_BASELINE_TABLES:  # didn't exist back then
             db.session.execute(sa.text(f"DROP TABLE {table}"))
+        for table, column in REMOVED_COLUMNS:
+            db.session.execute(sa.text(f'ALTER TABLE "{table}" ADD COLUMN {column}'))
         db.session.commit()
         # Batch mode rebuilds the table, so indexed / foreign-key columns can go too.
         from alembic.operations import Operations

@@ -6,7 +6,7 @@
   <div>
     <a href="{{ url_for('mortgages.index') }}" class="small text-decoration-none"><i class="bi bi-arrow-left"></i> All mortgages</a>
     <h1 class="h3 mb-0">{{ m.reference }} · {{ m.borrower_name }}</h1>
-    <div class="text-secondary">{{ m.property_address }}{% if m.property_city %}, {{ m.property_city }}{% endif %} {{ m.property_province or '' }}
+    <div class="text-secondary">{{ m.property_address }}{% if m.property_city %}, {{ m.property_city }}{% endif %}
       · <span class="badge badge-status-{{ m.display_status }}">{{ m.display_status_label }}</span></div>
   </div>
   <div class="d-flex gap-2">
@@ -47,8 +47,6 @@
         {{ row('First payment', m.first_payment_date|d) }}
         {{ row('Term', (m.term_months ~ ' months') if m.term_months else none) }}
         {{ row('Amortization', (m.amortization_months ~ ' months') if m.amortization_months else none) }}
-        {{ row('Your share', m.ownership_pct|pct(0)) }}
-        {{ row('Prepayment', m.prepayment_terms) }}
       </table>
     </div>
     {% if m.term_history %}
@@ -70,14 +68,10 @@
     {% endif %}
     <div class="card mb-3"><div class="card-header bg-white fw-semibold">Security</div>
       <table class="table table-sm mb-0">
-        {{ row('Property type', m.property_type_label) }}
-        {{ row('Value', (m.property_value|money) ~ ((' (appraised ' ~ (m.appraisal_date|d) ~ ')') if m.appraisal_date else '')) if m.property_value else none }}
+        {{ row('Value', m.property_value|money if m.property_value else none) }}
         {{ row('Prior charges', m.prior_charges|money if m.prior_charges else none) }}
         {{ row('LTV (this loan)', s.ltv|pct(1) if s.ltv is not none else none) }}
         {{ row('Combined LTV', s.cltv|pct(1) if s.cltv is not none else none) }}
-        {{ row('PIN / legal', m.pin) }}
-        {{ row('Insurance expiry', m.insurance_expiry|d if m.insurance_expiry else none) }}
-        {{ row('Property tax', m.property_tax_status) }}
       </table>
     </div>
     <div class="card mb-3" id="mortgagees"><div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
@@ -98,16 +92,10 @@
       <div class="card-body small text-secondary">No mortgagees recorded yet.{% if current_user.can_edit %} <a href="{{ url_for('mortgages.edit', mortgage_id=m.id) }}#mortgagees">Add who owns this mortgage</a>.{% endif %}</div>
       {% endif %}
     </div>
-    <div class="card mb-3"><div class="card-header bg-white fw-semibold">Borrower &amp; parties</div>
+    <div class="card mb-3"><div class="card-header bg-white fw-semibold">Other details</div>
       <table class="table table-sm mb-0">
-        {{ row('Email', m.borrower_email) }}
-        {{ row('Phone', m.borrower_phone) }}
-        {{ row('Guarantors', m.guarantors) }}
-        {{ row('Broker', (m.broker_name or '') ~ ((' — fee ' ~ (m.broker_fee|money)) if m.broker_fee else '')) }}
-        {{ row('Lawyer', m.lawyer_name) }}
         {{ row('Lender fee', m.lender_fee|money if m.lender_fee else none) }}
-        {{ row('Renewal fee', m.renewal_fee|money if m.renewal_fee else none) }}
-        {{ row('NSF fee', m.nsf_fee|money if m.nsf_fee else none) }}
+        {{ row('Broker / group', m.broker_name) }}
         {{ row('Bank keywords', m.keywords|join(', ')) }}
         {{ row('Added by', m.created_by.display_name if m.created_by else none) }}
       </table>
@@ -198,11 +186,10 @@
         <div class="col-md-3"><label class="form-label small mb-1">Payment ($, blank = calculate)</label>
           <input type="number" step="0.01" name="payment_amount" class="form-control form-control-sm" value="{{ m.payment_amount or '' }}"></div>
         <div class="col-md-3"><label class="form-label small mb-1">Renewal fee ($)</label>
-          <input type="number" step="0.01" name="renewal_fee" class="form-control form-control-sm" value="{{ m.renewal_fee or '' }}"></div>
-        <div class="col-md-6"><input name="note" class="form-control form-control-sm" placeholder="Note (optional), e.g. renewal letter signed Oct 2"></div>
-        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="record_fee" value="1" id="rf" checked>
-          <label class="form-check-label small" for="rf">Record the fee as income on the start date</label></div></div>
-        <div class="col-md-2 text-end"><button class="btn btn-sm btn-primary">Renew</button></div>
+          <input type="number" step="0.01" name="renewal_fee" class="form-control form-control-sm"></div>
+        <div class="col-md-7"><input name="note" class="form-control form-control-sm" placeholder="Note (optional), e.g. renewal letter signed Oct 2"></div>
+        <div class="col-md-5 text-end"><button class="btn btn-sm btn-primary">Renew</button></div>
+        <div class="col-12 form-text mt-0">A renewal fee is recorded as income on the start date.</div>
         <div class="col-12 form-text">Periods before the start date keep the old rate and payment, so past reports don't change.
           To fix a typo in the current terms instead, use Edit.</div>
       </form>
