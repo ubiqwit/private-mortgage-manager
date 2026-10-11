@@ -130,18 +130,6 @@ class Mortgage(TimestampMixin, db.Model):
         cascade="all, delete-orphan",
         order_by="TermHistory.valid_until",
     )
-    activities = db.relationship(
-        "MortgageActivity",
-        back_populates="mortgage",
-        cascade="all, delete-orphan",
-        order_by="MortgageActivity.created_at.desc()",
-    )
-    documents = db.relationship(
-        "MortgageDocument",
-        back_populates="mortgage",
-        cascade="all, delete-orphan",
-        order_by="MortgageDocument.uploaded_at.desc()",
-    )
     created_by = db.relationship("User", foreign_keys=[created_by_id])
     mortgagees = db.relationship(
         "Mortgagee",
@@ -358,53 +346,6 @@ class MortgageTransaction(TimestampMixin, db.Model):
         return -amt if self.type in ("advance", "nsf", "funding") else amt
 
 
-ACTIVITY_KINDS = [
-    ("note", "Note"),
-    ("call", "Phone call"),
-    ("email", "Email"),
-    ("meeting", "Meeting"),
-    ("letter", "Letter / notice"),
-    ("legal", "Legal / enforcement"),
-]
-
-
-class MortgageActivity(db.Model):
-    """A dated entry in a mortgage's activity log, optionally with a follow-up date."""
-
-    id = db.Column(db.Integer, primary_key=True)
-    mortgage_id = db.Column(db.Integer, db.ForeignKey("mortgage.id"), nullable=False, index=True)
-    kind = db.Column(db.String(20), nullable=False, default="note")
-    body = db.Column(db.Text, nullable=False)
-    follow_up_on = db.Column(db.Date, index=True)
-    done = db.Column(db.Boolean, nullable=False, default=False)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
-    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
-
-    mortgage = db.relationship("Mortgage", back_populates="activities")
-    user = db.relationship("User")
-
-    @property
-    def kind_label(self):
-        return dict(ACTIVITY_KINDS).get(self.kind, self.kind)
-
-    @property
-    def open_follow_up(self):
-        return self.follow_up_on is not None and not self.done
-
-
-DOCUMENT_CATEGORIES = [
-    ("commitment", "Commitment letter / loan agreement"),
-    ("appraisal", "Appraisal"),
-    ("title", "Title / registration / charge"),
-    ("insurance", "Insurance"),
-    ("identity", "ID / KYC"),
-    ("renewal", "Renewal / amendment"),
-    ("discharge", "Payout statement / discharge"),
-    ("correspondence", "Correspondence"),
-    ("other", "Other"),
-]
-
-
 def fmt_pct(value) -> str:
     """50 -> '50%', 33.70 -> '33.7%'."""
     text = f"{Decimal(value):f}"
@@ -423,29 +364,6 @@ class Mortgagee(db.Model):
     sort_order = db.Column(db.Integer, nullable=False, default=0)
 
     mortgage = db.relationship("Mortgage", back_populates="mortgagees")
-
-
-class MortgageDocument(db.Model):
-    """A file kept with a mortgage. Stored in the database so it survives redeploys
-    and is covered by the database's backups."""
-
-    id = db.Column(db.Integer, primary_key=True)
-    mortgage_id = db.Column(db.Integer, db.ForeignKey("mortgage.id"), nullable=False, index=True)
-    filename = db.Column(db.String(255), nullable=False)
-    content_type = db.Column(db.String(120), nullable=False, default="application/octet-stream")
-    size = db.Column(db.Integer, nullable=False, default=0)
-    category = db.Column(db.String(30), nullable=False, default="other")
-    note = db.Column(db.String(300))
-    content = db.deferred(db.Column(db.LargeBinary, nullable=False))  # only loaded on download
-    uploaded_by_id = db.Column(db.Integer, db.ForeignKey("user.id"))
-    uploaded_at = db.Column(db.DateTime, default=utcnow, nullable=False)
-
-    mortgage = db.relationship("Mortgage", back_populates="documents")
-    uploaded_by = db.relationship("User")
-
-    @property
-    def category_label(self):
-        return dict(DOCUMENT_CATEGORIES).get(self.category, self.category)
 
 
 class TermHistory(db.Model):

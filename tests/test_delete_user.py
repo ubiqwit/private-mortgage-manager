@@ -8,7 +8,6 @@ from app.models import (
     AuditLog,
     BankTransaction,
     Mortgage,
-    MortgageActivity,
     MortgageTransaction,
     StatementImport,
     User,
@@ -50,7 +49,6 @@ def test_delete_user_and_their_mortgages(app, client):
     setup_two_editors(app, client)
     editor = User.query.filter_by(email="editor@example.com").one()
     theirs = Mortgage.query.filter_by(property_address="2 Editor Ave").one()
-    admins = Mortgage.query.filter_by(property_address="1 Admin St").one()
 
     # Their payment was matched to a bank deposit; that line goes back to the queue.
     imp = StatementImport(filename="s.csv")
@@ -58,8 +56,7 @@ def test_delete_user_and_their_mortgages(app, client):
                            fingerprint="fp1", status="matched")
     db.session.add_all([imp, bank, MortgageTransaction(mortgage=theirs, date=date(2026, 2, 1), type="payment",
                                                        amount=1666.67, interest=1666.67, principal=0, fees=0,
-                                                       bank_transaction=bank),
-                        MortgageActivity(mortgage=admins, body="Called borrower", user_id=editor.id)])
+                                                       bank_transaction=bank)])
     db.session.commit()
 
     users_page = client.get("/users").get_data(as_text=True)
@@ -79,7 +76,6 @@ def test_delete_user_and_their_mortgages(app, client):
     assert MortgageTransaction.query.filter_by(bank_transaction_id=bank.id).count() == 0
     assert db.session.get(BankTransaction, bank.id).status == "unmatched"
     # History stays, just without them.
-    assert MortgageActivity.query.one().user_id is None
     assert AuditLog.query.filter_by(action="mortgage_created", detail=theirs.reference).one().user_id is None
     assert "editor@example.com and 2 mortgage(s)" in AuditLog.query.filter_by(action="user_deleted").one().detail
 

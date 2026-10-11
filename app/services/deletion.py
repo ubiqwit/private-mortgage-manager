@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from .. import db
-from ..models import AuditLog, Mortgage, MortgageActivity, MortgageDocument, PendingUpload, User
+from ..models import AuditLog, Mortgage, PendingUpload, User
 from .periods import PeriodClosed, ensure_open
 
 
@@ -32,16 +32,15 @@ def mortgages_added_by(user: User) -> list[Mortgage]:
 def delete_user(user: User) -> int:
     """Delete ``user`` and every mortgage they added. Returns how many mortgages went.
 
-    Their other records stay but no longer point at them: audit-log entries, notes and
-    documents on other people's mortgages, statement uploads in progress.
+    Their audit-log entries stay but no longer point at them; statement uploads they left
+    half-finished are discarded.
     """
     mortgages = mortgages_added_by(user)
     for m in mortgages:
         delete_mortgage(m)
     db.session.flush()
-    for model, column in ((AuditLog, AuditLog.user_id), (MortgageActivity, MortgageActivity.user_id),
-                          (MortgageDocument, MortgageDocument.uploaded_by_id)):
-        db.session.query(model).filter(column == user.id).update({column: None}, synchronize_session=False)
+    db.session.query(AuditLog).filter(AuditLog.user_id == user.id).update({AuditLog.user_id: None},
+                                                                           synchronize_session=False)
     db.session.query(PendingUpload).filter(PendingUpload.user_id == user.id).delete(synchronize_session=False)
     db.session.delete(user)
     return len(mortgages)

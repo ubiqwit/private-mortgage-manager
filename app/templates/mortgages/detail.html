@@ -113,42 +113,6 @@
         {{ row('Added by', m.created_by.display_name if m.created_by else none) }}
       </table>
     </div>
-    <div class="card mb-3" id="documents"><div class="card-header bg-white fw-semibold">Documents <span class="badge text-bg-light">{{ m.documents|length }}</span></div>
-      <ul class="list-group list-group-flush">
-        {% for doc in m.documents %}
-          <li class="list-group-item small d-flex justify-content-between align-items-start gap-2">
-            <div class="text-break">
-              <i class="bi {{ 'bi-file-earmark-pdf' if doc.filename.lower().endswith('.pdf') else 'bi-file-earmark' }}"></i>
-              <a href="{{ url_for('documents.download', doc_id=doc.id, view=1) }}" target="_blank" rel="noopener">{{ doc.filename }}</a>
-              <div class="text-secondary">{{ doc.category_label }} · {{ doc.size|filesize }} · {{ doc.uploaded_at|local('%Y-%m-%d') }}{% if doc.uploaded_by %} · {{ doc.uploaded_by.display_name }}{% endif %}</div>
-              {% if doc.note %}<div class="text-secondary fst-italic">{{ doc.note }}</div>{% endif %}
-            </div>
-            <div class="text-nowrap">
-              <a href="{{ url_for('documents.download', doc_id=doc.id) }}" title="Download"><i class="bi bi-download"></i></a>
-              {% if current_user.can_edit %}
-              <form method="post" action="{{ url_for('documents.delete', doc_id=doc.id) }}" class="d-inline" onsubmit="return confirm('Delete {{ doc.filename }}?')">
-                {{ csrf_field() }}<button class="btn btn-link btn-sm text-danger p-0 ms-1" title="Delete"><i class="bi bi-trash"></i></button></form>
-              {% endif %}
-            </div>
-          </li>
-        {% else %}
-          <li class="list-group-item small text-secondary">No documents yet.</li>
-        {% endfor %}
-      </ul>
-      {% if current_user.can_edit %}
-      <form method="post" action="{{ url_for('documents.upload', mortgage_id=m.id) }}" enctype="multipart/form-data" class="card-body border-top">
-        {{ csrf_field() }}
-        <input type="file" name="files" multiple class="form-control form-control-sm mb-2" required
-               accept=".pdf,.jpg,.jpeg,.png,.heic,.gif,.webp,.tif,.tiff,.doc,.docx,.xls,.xlsx,.csv,.txt,.msg,.eml">
-        <div class="d-flex gap-2">
-          <select name="category" class="form-select form-select-sm">{% for v, label in doc_categories %}<option value="{{ v }}">{{ label }}</option>{% endfor %}</select>
-          <button class="btn btn-sm btn-outline-primary text-nowrap"><i class="bi bi-upload"></i> Upload</button>
-        </div>
-        <input name="note" class="form-control form-control-sm mt-2" placeholder="Note (optional)">
-        <div class="form-text">PDF, images, Office files or email; up to 15 MB each.</div>
-      </form>
-      {% endif %}
-    </div>
     {% if m.notes %}<div class="card mb-3"><div class="card-header bg-white fw-semibold">Notes</div>
       <div class="card-body small" style="white-space:pre-wrap">{{ m.notes }}</div></div>{% endif %}
   </div>
@@ -288,44 +252,6 @@
         </tbody>
       </table>
       </div>
-    </div>
-
-    <div class="card mt-3" id="activity">
-      <div class="card-header bg-white fw-semibold">Activity &amp; follow-ups</div>
-      {% if current_user.can_edit %}
-      <form method="post" action="{{ url_for('activity.add', mortgage_id=m.id) }}" class="card-body row g-2 align-items-end border-bottom">
-        {{ csrf_field() }}
-        <div class="col-md-3"><select name="kind" class="form-select form-select-sm">{% for v, label in activity_kinds %}<option value="{{ v }}">{{ label }}</option>{% endfor %}</select></div>
-        <div class="col-md-9"><input name="body" class="form-control form-control-sm" placeholder="What happened? e.g. Called borrower about September payment — promised by the 15th" required></div>
-        <div class="col-md-4"><label class="form-label small mb-1">Follow up on (optional)</label>
-          <input type="date" name="follow_up_on" class="form-control form-control-sm"></div>
-        <div class="col-md-8 text-end"><button class="btn btn-sm btn-outline-primary">Add entry</button></div>
-      </form>
-      {% endif %}
-      <ul class="list-group list-group-flush">
-        {% for a in m.activities %}
-          <li class="list-group-item small">
-            <div class="d-flex justify-content-between gap-2">
-              <div><span class="fw-semibold">{{ a.kind_label }}</span> · <span class="text-secondary">{{ a.created_at|local('%b %d, %Y %H:%M') }}{% if a.user %} · {{ a.user.display_name }}{% endif %}</span></div>
-              {% if current_user.can_edit %}
-              <form method="post" action="{{ url_for('activity.delete', activity_id=a.id) }}" onsubmit="return confirm('Delete this entry?')">{{ csrf_field() }}
-                <button class="btn btn-link btn-sm p-0 text-secondary" title="Delete"><i class="bi bi-x-lg"></i></button></form>
-              {% endif %}
-            </div>
-            <div style="white-space:pre-wrap">{{ a.body }}</div>
-            {% if a.follow_up_on %}
-            <form method="post" action="{{ url_for('activity.toggle_done', activity_id=a.id) }}" class="mt-1">{{ csrf_field() }}
-              {% if a.done %}<i class="bi bi-check-circle-fill status-good"></i> Follow-up {{ a.follow_up_on|d }} done
-              {% else %}{% if a.follow_up_on < today %}<i class="bi bi-exclamation-octagon-fill status-critical"></i> Overdue:{% else %}<i class="bi bi-alarm"></i>{% endif %}
-                Follow up {{ a.follow_up_on|d }}{% endif %}
-              {% if current_user.can_edit %}<button class="btn btn-link btn-sm p-0 ms-2">{{ 'Reopen' if a.done else 'Mark done' }}</button>{% endif %}
-            </form>
-            {% endif %}
-          </li>
-        {% else %}
-          <li class="list-group-item small text-secondary">No activity yet. Log calls, emails and notices here to keep a history — useful if a file ever goes to enforcement.</li>
-        {% endfor %}
-      </ul>
     </div>
 
     {% if current_user.can_edit %}

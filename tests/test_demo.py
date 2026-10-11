@@ -1,6 +1,6 @@
 from datetime import date
 
-from app.models import Mortgage, MortgageActivity, MortgageTransaction
+from app.models import Mortgage, MortgageTransaction
 from app.services import demo
 from app.services.portfolio import dashboard_stats
 
@@ -27,7 +27,6 @@ def test_demo_book_is_varied_and_consistent(app):
         assert len(days) == len(set(days)), m.reference
     stats = dashboard_stats(today=today)
     assert stats["arrears_count"] >= 2 and stats["count"] >= 15
-    assert MortgageActivity.query.count() >= 3
 
 
 def test_load_and_remove_buttons(app, client):

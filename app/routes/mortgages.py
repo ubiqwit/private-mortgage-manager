@@ -8,8 +8,6 @@ from sqlalchemy import or_
 
 from .. import db
 from ..models import (
-    ACTIVITY_KINDS,
-    DOCUMENT_CATEGORIES,
     OPEN_STATUSES,
     PROPERTY_TYPES,
     STATUSES,
@@ -291,7 +289,6 @@ def detail(mortgage_id):
     history = payment_history(m, local_today(), prime)
     return render_template("mortgages/detail.html", m=m, s=stats, prime=prime, txn_types=TXN_TYPES,
                            history=history, history_summary=summary(history),
-                           doc_categories=DOCUMENT_CATEGORIES, activity_kinds=ACTIVITY_KINDS,
                            transactions=list(reversed(m.transactions)))
 
 

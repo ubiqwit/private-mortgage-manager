@@ -12,7 +12,7 @@ from decimal import Decimal
 from dateutil.relativedelta import relativedelta
 
 from .. import db
-from ..models import Mortgage, MortgageActivity, MortgageTransaction, TermHistory
+from ..models import Mortgage, MortgageTransaction, TermHistory
 from . import calc, ledger
 
 PREFIX = "DEMO-"
@@ -202,27 +202,10 @@ def load_demo(today: date, count: int = 20, user=None, seed: int = 7) -> int:
             m.maturity_date = effective + relativedelta(months=m.term_months)
             _fee(m, effective, m.renewal_fee, "Renewal fee")
             start = effective + timedelta(days=1)  # the renewal-date payment belongs to the old term
-        # Status and a paper trail for loans in trouble.
         if behaviour == "arrears" and m.status == "active":
             m.status = "in_arrears"
-            db.session.add(MortgageActivity(mortgage=m, kind="call", user=user,
-                                            body="Called borrower about missed payments — promised to catch up by month end.",
-                                            follow_up_on=today + timedelta(days=5)))
         if behaviour == "default":
             m.status = "default"
-            for kind, body, days in [
-                ("letter", "Sent demand letter for arrears.", 75),
-                ("legal", "Notice of Sale under Mortgage issued by lawyer (35-day redemption period).", 40),
-                ("call", "Borrower's lawyer says refinancing is in progress — awaiting commitment.", 10),
-            ]:
-                a = MortgageActivity(mortgage=m, kind=kind, body=body, user=user,
-                                     follow_up_on=(today + timedelta(days=7)) if kind == "call" else None)
-                db.session.add(a)
-                db.session.flush()
-                a.created_at = a.created_at - timedelta(days=days)
-        if behaviour == "late":
-            db.session.add(MortgageActivity(mortgage=m, kind="email", user=user,
-                                            body="Reminded borrower that payments are due on the 1st (5-day grace)."))
         db.session.flush()
         created += 1
     return created
