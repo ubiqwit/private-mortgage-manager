@@ -40,13 +40,6 @@ SERIES = [
            "Variable-rate mortgages priced as prime + spread follow this."),
     Series("V80691335", "Posted 5-year conventional mortgage rate", "5-yr posted mortgage", "weekly",
            "Big-bank posted rate — context for pricing renewals."),
-    Series("BD.CDN.2YR.DQ.YLD", "Government of Canada 2-year bond yield", "2-yr GoC", "daily",
-           "Markets' expectation for rates over the next two years."),
-    Series("BD.CDN.5YR.DQ.YLD", "Government of Canada 5-year bond yield", "5-yr GoC", "daily",
-           "Benchmark for 5-year fixed mortgage pricing."),
-    Series("BD.CDN.10YR.DQ.YLD", "Government of Canada 10-year bond yield", "10-yr GoC", "daily"),
-    Series("V41690973", "Consumer Price Index (all items, 2002=100)", "CPI index", "monthly",
-           "Inflation is what the Bank of Canada targets (2%)."),
 ]
 SERIES_BY_ID = {s.id: s for s in SERIES}
 
@@ -107,11 +100,6 @@ def prime_on(day: date):
     return values[i] if i >= 0 else None
 
 
-def history(series: str, since: date):
-    return (MarketObservation.query.filter(MarketObservation.series == series, MarketObservation.date >= since)
-            .order_by(MarketObservation.date).all())
-
-
 def rate_changes(series: str = POLICY_SERIES, since: date | None = None):
     """Dates on which a (step-like) rate changed, newest first: [(date, old, new, bp)]."""
     q = MarketObservation.query.filter_by(series=series)
@@ -148,20 +136,6 @@ def change_over(series: str, days: int):
     return Decimal(str(now.value)), Decimal(str(past.value)), Decimal(str(now.value)) - Decimal(str(past.value))
 
 
-def cpi_inflation():
-    """Year-over-year CPI inflation from the index series: (month, pct) or None."""
-    now = latest("V41690973")
-    if not now:
-        return None
-    year_ago = (MarketObservation.query.filter(MarketObservation.series == "V41690973",
-                                               MarketObservation.date <= now.date - relativedelta(months=12))
-                .order_by(MarketObservation.date.desc()).first())
-    if not year_ago or not year_ago.value:
-        return None
-    pct = (Decimal(str(now.value)) / Decimal(str(year_ago.value)) - 1) * 100
-    return now.date, pct.quantize(Decimal("0.1"))
-
-
 def last_fetch():
     raw = Setting.get("market_fetched_at")
     return datetime.fromisoformat(raw) if raw else None
@@ -173,16 +147,7 @@ def is_stale():
 
 
 def feeds():
-    raw = Setting.get("news_feeds")
-    if raw is None:
-        return list(DEFAULT_FEEDS)
-    out = []
-    for line in raw.splitlines():
-        if "|" in line:
-            label, url = line.split("|", 1)
-            if url.strip().startswith(("http://", "https://")):
-                out.append((label.strip(), url.strip()))
-    return out
+    return list(DEFAULT_FEEDS)
 
 
 # ----------------------------------------------------------------------------
@@ -357,64 +322,3 @@ def refresh(force: bool = False, get=None) -> dict:
 def _short_error(exc) -> str:
     text = str(exc) or exc.__class__.__name__
     return text if len(text) < 160 else text[:157] + "…"
-
-
-# ----------------------------------------------------------------------------
-# What it means for the book
-# ----------------------------------------------------------------------------
-SCENARIOS_BP = (-50, -25, 0, 25, 50)
-
-
-def portfolio_impact(prime=None) -> dict:
-    """How prime moves change income on variable loans, plus context for fixed loans and renewals."""
-    from ..models import OPEN_STATUSES, Mortgage
-    from . import calc
-
-    prime = Decimal(str(prime)) if prime is not None else None
-    book = Mortgage.query.filter(Mortgage.status.in_(OPEN_STATUSES)).order_by(Mortgage.reference).all()
-    variable, fixed = [], []
-    for m in book:
-        bal = m.balance()
-        if bal <= 0:
-            continue
-        (variable if m.rate_type == "variable" else fixed).append((m, bal))
-
-    var_rows = []
-    scenario_totals = {bp: Decimal(0) for bp in SCENARIOS_BP}
-    for m, bal in variable:
-        row = dict(m=m, balance=bal, rate=m.effective_rate(prime), floor=m.rate_floor, spread=m.prime_spread,
-                   at_floor=bool(prime is not None and m.rate_floor is not None
-                                 and m.effective_rate(prime) == Decimal(str(m.rate_floor))))
-        row["monthly"] = calc.monthly_interest(bal, row["rate"], m.compounding)
-        var_rows.append(row)
-        if prime is not None:
-            for bp in SCENARIOS_BP:
-                rate = m.effective_rate(prime + Decimal(bp) / 100)
-                scenario_totals[bp] += calc.monthly_interest(bal, rate, m.compounding)
-    base = scenario_totals[0]
-    scenarios = [(bp, calc.money(v), calc.money(v - base)) for bp, v in scenario_totals.items()] if prime is not None else []
-
-    fixed_balance = sum((b for _, b in fixed), Decimal(0))
-    fixed_rate = (sum((b * Decimal(str(m.interest_rate)) for m, b in fixed), Decimal(0)) / fixed_balance
-                  if fixed_balance else None)
-    goc5 = latest("BD.CDN.5YR.DQ.YLD")
-    posted5 = latest("V80691335")
-
-    today = local_today()
-    renewals = []
-    for m, bal in variable + fixed:
-        days = (m.maturity_date - today).days
-        if days <= 180:
-            renewals.append(dict(m=m, balance=bal, days=days, rate=m.effective_rate(prime),
-                                 spread_over_prime=(m.effective_rate(prime) - prime) if prime is not None else None))
-    renewals.sort(key=lambda r: r["days"])
-
-    return dict(
-        prime=prime, variable=var_rows, scenarios=scenarios,
-        variable_balance=calc.money(sum((r["balance"] for r in var_rows), Decimal(0))),
-        fixed_count=len(fixed), fixed_balance=calc.money(fixed_balance),
-        fixed_rate=calc.money(fixed_rate) if fixed_rate is not None else None,
-        spread_over_goc5=(calc.money(fixed_rate - Decimal(str(goc5.value))) if fixed_rate is not None and goc5 else None),
-        spread_over_posted=(calc.money(fixed_rate - Decimal(str(posted5.value))) if fixed_rate is not None and posted5 else None),
-        renewals=renewals,
-    )

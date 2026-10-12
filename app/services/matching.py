@@ -97,14 +97,6 @@ def score(bank: BankTransaction, m: Mortgage, prime=None) -> Suggestion | None:
             pts += 30
             txn_type = "payout"
             reasons.append("covers the full balance — looks like a payout")
-        elif m.nsf_fee and amount == calc.money(m.nsf_fee):
-            pts += 15
-            txn_type = "fee"
-            reasons.append("equals the NSF fee")
-        elif m.renewal_fee and amount == calc.money(m.renewal_fee):
-            pts += 15
-            txn_type = "fee"
-            reasons.append("equals the renewal fee")
         # --- when ---------------------------------------------------------------
         if txn_type == "payment":
             near = [d for d in m.due_dates(start=bank.date - timedelta(days=7), end=bank.date + timedelta(days=7))]

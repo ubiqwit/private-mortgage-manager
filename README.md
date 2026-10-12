@@ -11,11 +11,11 @@ from anywhere.
 
 | Area | Highlights |
 |---|---|
-| **Mortgages** | Borrower, security (value, position, prior charges, CLTV), terms (fixed, or prime + spread with a floor; monthly / semi-annual / annual compounding; interest-only or blended; any payment frequency), fees, broker, lawyer, insurance, notes. Payment schedule with balloon. Record payments, prepayments, fees, NSFs, payouts and advances; the interest/principal/fee split is suggested and editable. Renewals keep the old terms for past periods. Import your existing book from a spreadsheet. |
-| **Dashboard** | Capital deployed, interest run-rate, weighted average rate and CLTV, collected vs scheduled this month, YTD income, arrears, 12-month income chart, maturity ladder, CLTV bands, concentration by position / property type / city, and a "needs attention" list (arrears, maturities, expiring insurance, stale appraisals, high CLTV). |
-| **Market & rates** | Live Bank of Canada policy rate, prime, posted 5-yr mortgage rate, GoC 2/5/10-yr yields and CPI; rate-decision history (hikes/cuts); news feeds; what a ±25/50 bp prime move does to your income; how your fixed rates compare to the market; renewals coming up. |
+| **Mortgages** | Address, borrower, principal, rate, charge (funded) and maturity dates, payment, lender fee, broker/group, and mortgagees (who owns each mortgage and their percentage — filter the list by mortgagee to see their share of the balance). Security: property value, charge position and prior charges, giving LTV. Terms: fixed, or prime + spread with a floor; monthly / semi-annual / annual compounding; interest-only or blended; any payment frequency. Record payments, prepayments, fees, NSFs, payouts and advances; the interest/principal/fee split is suggested and editable. Renewals keep the old terms for past periods. Payment history grid (on time / late / missed) and payment schedule. Import your existing book from a spreadsheet. |
+| **Dashboard** | Capital deployed, monthly interest, collected vs scheduled this month, income year to date, arrears, and a "needs attention" list of missed payments and maturities. |
+| **Market & rates** | Live Bank of Canada policy rate, prime and the posted 5-year mortgage rate, the history of rate decisions (hikes and cuts), and rate news. |
 | **Bank statements** | Upload CSV, Excel or OFX/QFX exports from any Canadian bank (column layout is auto-detected and can be corrected). Duplicates are skipped. Deposits are matched to mortgages automatically by learned description, borrower name, amount and due date; you confirm, split a deposit across mortgages, or mark it as not mortgage-related. |
-| **Month-end report** | Per mortgage: opening/closing balance, principal repaid, interest and fees received (cash), interest earned (accrual), scheduled vs received, arrears. Transactions, bank reconciliation and YTD income by month. Download as an Excel workbook (with formulas) or CSV, or print to PDF. Close the books once it's sent so nothing in that month can change. |
+| **Month-end report** | For the whole book or one mortgagee's share. Per mortgage: opening/closing balance, principal repaid, interest and fees received (cash), interest earned (accrual), scheduled vs received, arrears. Transactions, bank reconciliation and income by month for the year to date. Download as an Excel workbook (with formulas) or print to PDF. Close the books once it's sent so nothing in that month can change. |
 | **Security** | Individual logins with roles (admin / editor / read-only viewer), hashed passwords, lockout after failed attempts, CSRF protection, secure cookies, CSP, audit log of every change, full data export. |
 
 ## Your monthly routine
@@ -26,7 +26,8 @@ from anywhere.
    the rest, and mark personal/transfer deposits as *not a mortgage item*. Each match you
    make teaches the app that borrower's bank description.
 3. Open **Month-end report**, check the unmatched-deposits warning is gone, and download
-   the **Excel workbook** for your accountant (or give them a *viewer* login).
+   the **Excel workbook** for your accountant (or give them a *viewer* login). For a company or
+   person who owns a share of the mortgages, pick them in the report to get just their share.
 4. **Close books** for the month (admin) so the numbers you sent can't drift.
 
 Payments can also be recorded by hand on a mortgage's page; when the bank statement
@@ -52,16 +53,16 @@ The app applies database migrations itself on start-up, so deploying a new versi
 all an upgrade takes. Uploaded statements are stored in the database, so ephemeral
 container disks are fine.
 
-### Option A — Render (simplest)
+### Option A — free: Render + Neon (see [DEPLOY.md](DEPLOY.md) for click-by-click steps)
 
-1. In Render: **New → Blueprint** and pick this repository. `render.yaml` creates the
-   web service (Docker) and a PostgreSQL database.
-2. When prompted, enter `PMM_ADMIN_EMAIL` and `PMM_ADMIN_PASSWORD` — your first login is
-   created on start-up (you can remove them afterwards; the account stays).
-3. Open the `https://….onrender.com` address and sign in. Add a custom domain in Render if
-   you like. Use paid plans for the database — free databases are deleted after a while.
-4. Optional: add a Render **Cron Job** running `flask --app run refresh-market` (e.g.
-   hourly on weekdays) so rates are fresh even when nobody has the Market page open.
+1. Create a free PostgreSQL database on [Neon](https://neon.tech) and copy its connection string.
+2. In Render: **New → Blueprint** and pick this repository. `render.yaml` creates a free web
+   service and asks for `DATABASE_URL` (the Neon string), `PMM_ADMIN_EMAIL` and `PMM_ADMIN_PASSWORD`.
+3. Point a subdomain (e.g. `mortgages.yourdomain.com`) at the service with a CNAME record.
+
+The free plan would sleep after 15 idle minutes; the app pings itself every 10 minutes to stay awake
+(`app/keepalive.py`, off with `PMM_KEEP_AWAKE=0`). Moving to paid plans later is
+a plan change only.
 
 ### Option B — any Docker host (Fly.io, Railway, DigitalOcean, AWS, Azure…)
 
@@ -92,10 +93,12 @@ See `.env.example` for a template.
 ### Users and access
 
 * **admin** — everything, plus users, closing/reopening months and the full data export.
-* **editor** — add and change mortgages, transactions and statements.
+* **editor** — add, change and delete mortgages, transactions and statements.
 * **viewer** — read-only; ideal for your accountant to pull reports themselves.
 
-Five failed sign-ins lock an account for 15 minutes; changing a password signs out every
+Each mortgage records who added it. An admin can delete a user from the Users page, which also
+deletes every mortgage that user added (after typing their email to confirm); to just stop someone
+signing in, untick *Active* instead. Five failed sign-ins lock an account for 15 minutes; changing a password signs out every
 other device; the Users page shows the audit log. From a shell:
 
 ```bash
@@ -125,8 +128,7 @@ control.
 ## Live market data
 
 The **Market & rates** page uses the free [Bank of Canada Valet API](https://www.bankofcanada.ca/valet/docs)
-(no key needed) and RSS/Atom feeds you can edit (Bank of Canada press releases and
-Google News searches by default). It refreshes in the background when the page is
+(no key needed) and news feeds (Bank of Canada press releases and Google News searches). It refreshes in the background when the page is
 opened and the data is more than 6 hours old, or on demand. If your server can't reach
 the Bank of Canada, enter prime by hand on the same page.
 
@@ -157,7 +159,7 @@ app/
                        statements (bank file parsing), matching, reports, market, periods,
                        importer, backup, safety
   routes/              one blueprint per section
-  templates/, static/  Bootstrap UI (vendored, works offline) and Chart.js charts
+  templates/, static/  Bootstrap UI (vendored, works offline)
 migrations/            Alembic migrations, applied automatically on start-up
 tests/                 pytest suite
 ```

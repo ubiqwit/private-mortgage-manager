@@ -75,3 +75,42 @@ def test_export_admin_only(app):
     c = app.test_client()
     c.post("/login", data={"email": "viewer@example.com", "password": PASSWORD})
     assert c.get("/export/all.xlsx").status_code == 403
+
+
+def test_engine_options_handle_neon_pooler():
+    from app import _engine_options
+
+    pooled = _engine_options("postgresql://u:p@ep-cool-1-pooler.us-east-2.aws.neon.tech/neondb?sslmode=require")
+    assert pooled["connect_args"] == {"prepare_threshold": None}
+    direct = _engine_options("postgresql://u:p@ep-cool-1.us-east-2.aws.neon.tech/neondb?sslmode=require")
+    assert "connect_args" not in direct and direct["pool_pre_ping"]
+
+
+def test_admin_reset_from_environment(app, monkeypatch):
+    from app import db
+    from app.models import bootstrap_admin_from_env
+
+    user = make_user("owner@example.com")
+    user.active = False
+    db.session.commit()
+    monkeypatch.setenv("PMM_ADMIN_EMAIL", "Owner@example.com")
+    monkeypatch.setenv("PMM_ADMIN_PASSWORD", "brand-new-password")
+    bootstrap_admin_from_env()  # without the reset flag, existing users are left alone
+    assert not db.session.get(User, user.id).check_password("brand-new-password")
+    monkeypatch.setenv("PMM_ADMIN_RESET", "1")
+    bootstrap_admin_from_env()
+    u = db.session.get(User, user.id)
+    assert u.check_password("brand-new-password") and u.active and u.role == "admin"
+
+
+def test_short_bootstrap_password_does_not_crash(tmp_path, monkeypatch):
+    from app import create_app
+    from app.models import User
+
+    monkeypatch.setenv("PMM_ADMIN_EMAIL", "owner@example.com")
+    monkeypatch.setenv("PMM_ADMIN_PASSWORD", "short")
+    app = create_app({"TESTING": True, "SECRET_KEY": "t", "MARKET_FETCH_ENABLED": False,
+                      "SQLALCHEMY_DATABASE_URI": f"sqlite:///{tmp_path / 'x.db'}"})
+    with app.app_context():
+        assert User.query.count() == 0
+    assert app.test_client().get("/login").status_code == 200

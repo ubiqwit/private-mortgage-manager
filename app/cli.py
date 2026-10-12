@@ -82,11 +82,11 @@ def _seed_demo(today=None):
         ("Greenfield Dev Corp", "Lot 4 Conc 7", "Caledon", "land", 1_900_000, 1, 0, 800_000, "13.00", 12, 2, "interest_only"),
         ("Amira Haddad", "54 Queen St N", "Kitchener", "multi_unit", 1_300_000, 1, 0, 700_000, None, 18, 7, "interest_only"),
     ]
-    for i, (name, addr, city, ptype, value, pos, prior, principal, rate, term, age, ptype_pay) in enumerate(samples, 1):
+    for i, (name, addr, city, _kind, value, pos, prior, principal, rate, term, age, ptype_pay) in enumerate(samples, 1):
         funded = (today - relativedelta(months=age)).replace(day=1)
         m = Mortgage(
             reference=f"M-{i:03d}", borrower_name=name, property_address=addr, property_city=city,
-            property_province="ON", property_type=ptype, property_value=Decimal(value), position=pos,
+            property_value=Decimal(value), position=pos,
             prior_charges=Decimal(prior), principal_amount=Decimal(principal),
             interest_rate=Decimal(rate or "9.95"), rate_type="variable" if rate is None else "fixed",
             prime_spread=Decimal("5.00") if rate is None else None, rate_floor=Decimal("9.50") if rate is None else None,
@@ -95,8 +95,6 @@ def _seed_demo(today=None):
             funded_date=funded, first_payment_date=funded + relativedelta(months=1), term_months=term,
             maturity_date=funded + relativedelta(months=term), lender_fee=Decimal(principal) * Decimal("0.02"),
             broker_name=rnd.choice(["Mortgage Alliance", "Dominion Lending", "Private broker"]),
-            broker_fee=Decimal(principal) * Decimal("0.01"), appraisal_date=funded - relativedelta(weeks=3),
-            insurance_expiry=today + relativedelta(days=[12, 140, 200, 300, 75, 260, 330, 190][i - 1]),
             status="active", match_keywords="\n".join(name_tokens(name)[-1:] + [f"E-TRANSFER {name.split()[0].upper()}"]),
         )
         db.session.add(m)
@@ -127,5 +125,9 @@ def register_seed(app):
             raise click.ClickException("The database already has mortgages; demo data is only loaded into an empty book.")
         if not yes:
             click.confirm("Load sample mortgages for trying the app out?", abort=True)
-        _seed_demo()
-        click.echo("Loaded demo mortgages.")
+        from .services.demo import load_demo
+        from .timeutil import today
+
+        n = load_demo(today())
+        db.session.commit()
+        click.echo(f"Loaded {n} demo mortgages.")

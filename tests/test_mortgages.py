@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from app import db
@@ -42,7 +42,7 @@ def test_create_mortgage_derives_dates_and_fee(client):
     assert len(m.transactions) == 1 and m.transactions[0].fees == Decimal("4000.00")
     assert client.get(f"/mortgages/{m.id}").status_code == 200
     assert client.get(f"/mortgages/{m.id}/schedule").status_code == 200
-    assert b"Jane Smith" in client.get("/mortgages/").data
+    assert m.property_address.encode() in client.get("/mortgages/").data
 
 
 def test_validation_errors(client):
@@ -102,6 +102,24 @@ def test_delete_requires_reference(client):
     assert Mortgage.query.count() == 0
 
 
+def test_editor_can_delete_viewer_cannot(app, client):
+    from .conftest import PASSWORD, make_user
+
+    m = create(client)
+    make_user("viewer@example.com", role="viewer")
+    make_user("editor@example.com", role="editor")
+    viewer, editor = app.test_client(), app.test_client()
+    viewer.post("/login", data={"email": "viewer@example.com", "password": PASSWORD})
+    editor.post("/login", data={"email": "editor@example.com", "password": PASSWORD})
+
+    assert "Delete this mortgage" not in viewer.get(f"/mortgages/{m.id}").get_data(as_text=True)
+    assert viewer.post(f"/mortgages/{m.id}/delete", data={"confirm": m.reference}).status_code == 403
+    page = editor.get(f"/mortgages/{m.id}").get_data(as_text=True)
+    assert "Delete this mortgage" in page and 'id="delete-link"' in page
+    editor.post(f"/mortgages/{m.id}/delete", data={"confirm": m.reference})
+    assert Mortgage.query.count() == 0
+
+
 def test_edit(client):
     m = create(client)
     resp = client.post(f"/mortgages/{m.id}/edit", data={**BASE, "reference": m.reference, "interest_rate": "11"})
@@ -113,10 +131,10 @@ def test_edit(client):
 def test_renewal_keeps_past_terms(client):
     from app.services import reports
 
-    m = create(client, record_lender_fee="", renewal_fee="1000")  # 10% to Jan 1 2027, $1,666.67/mo
+    m = create(client, record_lender_fee="")  # 10% to Jan 1 2027, $1,666.67/mo
     resp = client.post(f"/mortgages/{m.id}/renew", data={
         "effective_date": "2027-01-01", "rate_type": "fixed", "interest_rate": "12", "term_months": "12",
-        "renewal_fee": "1000", "record_fee": "1",
+        "renewal_fee": "1000",
     })
     assert resp.status_code == 302
     m = db.session.get(Mortgage, m.id)
@@ -159,3 +177,25 @@ def test_variable_history_uses_prime_on_the_day(client):
     m = create(client, rate_type="variable", prime_spread="5", record_lender_fee="")
     assert m.effective_rate(on=date(2026, 3, 1)) == Decimal("10.20")
     assert m.effective_rate(on=date(2026, 7, 1)) == Decimal("9.95")
+
+
+def test_status_filter_and_default_order_follow_displayed_status(client):
+    from app.timeutil import today
+
+    t = today()
+    create(client, property_address="Later Street", funded_date=(t - timedelta(days=30)).isoformat(),
+                   term_months="", maturity_date=(t + timedelta(days=300)).isoformat())
+    past = create(client, property_address="Past Street", funded_date=(t - timedelta(days=500)).isoformat(),
+                  term_months="", maturity_date=(t - timedelta(days=100)).isoformat())
+    create(client, property_address="Soon Street", funded_date=(t - timedelta(days=30)).isoformat(),
+                  term_months="", maturity_date=(t + timedelta(days=60)).isoformat())
+    assert past.status == "active" and past.display_status == "matured"
+
+    active = client.get("/mortgages/?status=active").get_data(as_text=True)
+    assert "Later Street" in active and "Soon Street" in active and "Past Street" not in active
+    matured = client.get("/mortgages/?status=matured").get_data(as_text=True)
+    assert "Past Street" in matured and "Later Street" not in matured
+
+    page = client.get("/mortgages/").get_data(as_text=True)
+    order = [page.index(n) for n in ("Soon Street", "Later Street", "Past Street")]
+    assert order == sorted(order), "running loans by maturity first, matured ones at the bottom"

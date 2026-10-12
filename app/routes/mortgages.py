@@ -3,22 +3,25 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
 from dateutil.relativedelta import relativedelta
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, flash, g, jsonify, redirect, render_template, request, url_for
 from sqlalchemy import or_
 
 from .. import db
 from ..models import (
-    PROPERTY_TYPES,
+    OPEN_STATUSES,
     STATUSES,
     TXN_TYPES,
     Mortgage,
+    Mortgagee,
     MortgageTransaction,
     TermHistory,
     audit,
+    fmt_pct,
     next_reference,
 )
-from ..services import calc, ledger, matching
+from ..services import calc, ledger, matching, mortgagees
 from ..services.market import latest_prime
+from ..services.mortgagees import MortgageeError
 from ..services.periods import PeriodClosed, ensure_open
 from ..timeutil import today as local_today
 
@@ -26,15 +29,13 @@ bp = Blueprint("mortgages", __name__, url_prefix="/mortgages")
 
 DECIMAL_FIELDS = [
     "property_value", "prior_charges", "principal_amount", "interest_rate", "prime_spread", "rate_floor",
-    "payment_amount", "ownership_pct", "lender_fee", "broker_fee", "renewal_fee", "nsf_fee",
+    "payment_amount", "lender_fee",
 ]
 INT_FIELDS = ["position", "amortization_months", "term_months"]
-DATE_FIELDS = ["appraisal_date", "funded_date", "first_payment_date", "maturity_date", "insurance_expiry"]
+DATE_FIELDS = ["funded_date", "first_payment_date", "maturity_date"]
 TEXT_FIELDS = [
-    "reference", "borrower_name", "borrower_email", "borrower_phone", "guarantors", "property_address",
-    "property_city", "property_province", "property_type", "pin", "rate_type", "compounding", "payment_type",
-    "payment_frequency", "broker_name", "lawyer_name", "prepayment_terms", "property_tax_status", "status",
-    "match_keywords", "notes",
+    "reference", "borrower_name", "property_address", "property_city", "rate_type", "compounding", "payment_type",
+    "payment_frequency", "broker_name", "status", "match_keywords", "notes",
 ]
 REQUIRED = {
     "borrower_name": "Borrower name",
@@ -105,16 +106,26 @@ def apply_form(m: Mortgage, form):
         raise FormError("Amortizing mortgages need an amortization period or a fixed payment amount")
     if not m.reference:
         m.reference = next_reference()
-    if m.ownership_pct is None:
-        m.ownership_pct = Decimal(100)
     if m.position is None:
         m.position = 1
 
 
 def form_context(m):
+    from ..services import form_fields
+
+    show = form_fields.visible_fields(g.user)
+    preset = form_fields.preset_name(g.user)
     return dict(
+        show=show,
+        mortgagee_names=mortgagees.names_in_use(),
+        mortgagee_rows=(
+            list(zip(request.form.getlist("mortgagee_name"), request.form.getlist("mortgagee_pct"), strict=False))
+            if request.method == "POST" and "mortgagees_form" in request.form
+            else [(o.name, fmt_pct(o.share_pct)[:-1]) for o in m.mortgagees]
+        ),
+        section_shown={name: any(f in show for f, _ in fields) for name, fields in form_fields.GROUPS},
+        preset_label=form_fields.PRESETS[preset][0] if preset else None,
         m=m,
-        property_types=PROPERTY_TYPES,
         statuses=STATUSES,
         frequencies=list(calc.FREQUENCIES),
         compounding=list(calc.COMPOUNDING),
@@ -127,7 +138,13 @@ def index():
     q = Mortgage.query
     status = request.args.get("status", "open")
     if status == "open":
-        q = q.filter(Mortgage.status.in_(("active", "in_arrears", "default", "matured")))
+        q = q.filter(Mortgage.status.in_(OPEN_STATUSES))
+    elif status in ("active", "in_arrears"):
+        # Shown as "Matured" once past maturity, so they don't belong under Active / In arrears.
+        q = q.filter_by(status=status).filter(Mortgage.maturity_date >= local_today())
+    elif status == "matured":
+        q = q.filter(or_(Mortgage.status == "matured",
+                         Mortgage.status.in_(("active", "in_arrears")) & (Mortgage.maturity_date < local_today())))
     elif status != "all":
         q = q.filter_by(status=status)
     search = request.args.get("q", "").strip()
@@ -136,41 +153,55 @@ def index():
         q = q.filter(or_(
             Mortgage.borrower_name.ilike(like), Mortgage.property_address.ilike(like),
             Mortgage.reference.ilike(like), Mortgage.property_city.ilike(like), Mortgage.broker_name.ilike(like),
+            Mortgage.mortgagees.any(Mortgagee.name.ilike(like)),
         ))
+    owner = request.args.get("mortgagee", "").strip()
+    if owner:
+        q = q.filter(Mortgage.mortgagees.any(Mortgagee.name == owner))
     sort = request.args.get("sort", "maturity")
     order = {
         "maturity": Mortgage.maturity_date,
-        "reference": Mortgage.reference,
-        "borrower": Mortgage.borrower_name,
+        "property": Mortgage.property_address,
         "rate": Mortgage.interest_rate.desc(),
         "principal": Mortgage.principal_amount.desc(),
     }.get(sort, Mortgage.maturity_date)
     mortgages = q.order_by(order).all()
+    if sort == "maturity":
+        # Running loans first (soonest maturity at the top), then matured ones, then paid out.
+        rank = {"matured": 1, "paid_out": 2}
+        mortgages.sort(key=lambda m: rank.get(m.display_status, 0))
     rows = [
         dict(m=m, balance=m.balance(), rate=m.effective_rate(prime), payment=m.regular_payment(prime),
-             arrears=m.arrears(prime=prime), ltv=m.combined_ltv(), next_due=m.next_due_date())
+             ltv=m.combined_ltv())
         for m in mortgages
     ]
     totals = dict(
+        principal=sum((r["m"].principal_amount for r in rows), Decimal(0)),
         balance=sum((r["balance"] for r in rows), Decimal(0)),
         payment=sum((r["m"].monthly_equivalent_payment(prime) for r in rows), Decimal(0)),
-        arrears=sum((r["arrears"] for r in rows), Decimal(0)),
     )
+    if owner:
+        # The filtered mortgagee's own part of these loans.
+        share = {r["m"].id: next(o.share_pct for o in r["m"].mortgagees if o.name == owner) for r in rows}
+        totals["owner_balance"] = calc.money(sum((r["balance"] * share[r["m"].id] / 100 for r in rows), Decimal(0)))
     return render_template("mortgages/index.html", rows=rows, totals=totals, status=status, search=search,
-                           sort=sort, statuses=STATUSES)
+                           sort=sort, statuses=STATUSES, owner=owner, mortgagee_names=mortgagees.names_in_use())
 
 
 @bp.route("/new", methods=["GET", "POST"])
 def new():
     m = Mortgage(status="active", rate_type="fixed", compounding="monthly", payment_type="interest_only",
-                 payment_frequency="monthly", position=1, property_province="ON", property_type="detached",
-                 ownership_pct=Decimal(100))
+                 payment_frequency="monthly", position=1)
     if request.method == "POST":
         try:
             apply_form(m, request.form)
-        except FormError as exc:
+            owners = mortgagees.from_form(request.form)
+        except (FormError, MortgageeError) as exc:
             flash(str(exc), "danger")
             return render_template("mortgages/form.html", **form_context(m)), 400
+        if owners is not None:
+            mortgagees.assign(m, owners)
+        m.created_by = g.user
         db.session.add(m)
         if request.form.get("record_lender_fee") and m.lender_fee:
             # Lender fees are usually deducted from the advance, so they are income on the funding date.
@@ -193,7 +224,10 @@ def edit(mortgage_id):
         try:
             with db.session.no_autoflush:
                 apply_form(m, request.form)
-        except FormError as exc:
+                owners = mortgagees.from_form(request.form)
+                if owners is not None:
+                    mortgagees.assign(m, owners)
+        except (FormError, MortgageeError) as exc:
             db.session.rollback()
             flash(str(exc), "danger")
             m = db.get_or_404(Mortgage, mortgage_id)
@@ -207,20 +241,18 @@ def edit(mortgage_id):
 
 @bp.route("/<int:mortgage_id>/delete", methods=["POST"])
 def delete(mortgage_id):
+    from ..services.deletion import closed_month_problem, delete_mortgage
+
     m = db.get_or_404(Mortgage, mortgage_id)
     if request.form.get("confirm") != m.reference:
         flash(f"Type {m.reference} to confirm deletion.", "warning")
         return redirect(url_for("mortgages.detail", mortgage_id=m.id))
-    try:
-        ensure_open(*(t.date for t in m.transactions), m.funded_date, action="delete a mortgage with history in closed months")
-    except PeriodClosed as exc:
-        flash(str(exc) + " Set its status to Paid out instead.", "danger")
+    problem = closed_month_problem(m)
+    if problem:
+        flash(problem + " Set its status to Paid out instead.", "danger")
         return redirect(url_for("mortgages.detail", mortgage_id=m.id))
-    for t in m.transactions:
-        if t.bank_transaction is not None:
-            t.bank_transaction.status = "unmatched" if len(t.bank_transaction.mortgage_transactions) <= 1 else "matched"
     audit("mortgage_deleted", f"{m.reference} {m.borrower_name}")
-    db.session.delete(m)
+    delete_mortgage(m)
     db.session.commit()
     flash(f"Deleted {m.reference}.", "success")
     return redirect(url_for("mortgages.index"))
@@ -242,11 +274,12 @@ def detail(mortgage_id):
         last_payment=m.last_payment(),
         days_to_maturity=m.days_to_maturity(),
         ytd=m.income_between(year_start, local_today()),
-        lifetime=m.income_between(m.funded_date, local_today()),
-        annual_interest=calc.money(m.balance() * m.effective_rate(prime) / 100),
     )
+    from ..services.history import payment_history
+
+    history = payment_history(m, local_today(), prime)
     return render_template("mortgages/detail.html", m=m, s=stats, prime=prime, txn_types=TXN_TYPES,
-                           transactions=list(reversed(m.transactions)))
+                           history=history, transactions=list(reversed(m.transactions)))
 
 
 @bp.route("/<int:mortgage_id>/schedule")
@@ -397,10 +430,8 @@ def renew(mortgage_id):
     if m.status == "matured":
         m.status = "active"
     if fee:
-        m.renewal_fee = fee
-        if f.get("record_fee"):
-            db.session.add(MortgageTransaction(mortgage=m, date=effective, type="fee", amount=calc.money(fee),
-                                               fees=calc.money(fee), interest=0, principal=0, notes="Renewal fee"))
+        db.session.add(MortgageTransaction(mortgage=m, date=effective, type="fee", amount=calc.money(fee),
+                                           fees=calc.money(fee), interest=0, principal=0, notes="Renewal fee"))
     line = (f"{local_today():%Y-%m-%d}: renewed from {effective:%b %d, %Y} — was {old}; now "
             f"{m.effective_rate(latest_prime(), on=effective):.2f}% to {new_maturity:%b %d, %Y}")
     m.notes = ((m.notes or "").rstrip() + "\n" + line).strip()
@@ -493,8 +524,7 @@ def import_book():
     with db.session.no_autoflush:
         for n, form in rows:
             m = Mortgage(status="active", rate_type="fixed", compounding="monthly", payment_type="interest_only",
-                         payment_frequency="monthly", position=1, property_province="ON", property_type="detached",
-                         ownership_pct=Decimal(100))
+                         payment_frequency="monthly", position=1)
             try:
                 if form.get("reference") and (form["reference"] in taken or form["reference"] in refs):
                     raise FormError(f"Reference {form['reference']} already exists")
@@ -502,10 +532,12 @@ def import_book():
                 if not form.get("reference"):
                     m.reference = None  # assigned after validation, so generated refs don't collide
                 adjustment = importer.balance_adjustment(form)
+                mortgagees.assign(m, mortgagees.parse_text(form.get("_mortgagees")))
             except (FormError, ValueError) as exc:
                 errors.append((n, form.get("borrower_name") or "?", str(exc)))
                 continue
             refs.add(m.reference)
+            m.created_by = g.user
             created.append((m, adjustment))
     if errors:
         db.session.rollback()

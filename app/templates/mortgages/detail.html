@@ -6,13 +6,14 @@
   <div>
     <a href="{{ url_for('mortgages.index') }}" class="small text-decoration-none"><i class="bi bi-arrow-left"></i> All mortgages</a>
     <h1 class="h3 mb-0">{{ m.reference }} · {{ m.borrower_name }}</h1>
-    <div class="text-secondary">{{ m.property_address }}{% if m.property_city %}, {{ m.property_city }}{% endif %} {{ m.property_province or '' }}
+    <div class="text-secondary">{{ m.property_address }}{% if m.property_city %}, {{ m.property_city }}{% endif %}
       · <span class="badge badge-status-{{ m.display_status }}">{{ m.display_status_label }}</span></div>
   </div>
   <div class="d-flex gap-2">
     <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('mortgages.schedule', mortgage_id=m.id) }}"><i class="bi bi-table"></i> Payment schedule</a>
     {% if current_user.can_edit %}
     <a class="btn btn-primary btn-sm" href="{{ url_for('mortgages.edit', mortgage_id=m.id) }}"><i class="bi bi-pencil"></i> Edit</a>
+    <a class="btn btn-outline-danger btn-sm" href="#delete-mortgage" id="delete-link"><i class="bi bi-trash"></i> Delete</a>
     {% endif %}
   </div>
 </div>
@@ -46,9 +47,6 @@
         {{ row('First payment', m.first_payment_date|d) }}
         {{ row('Term', (m.term_months ~ ' months') if m.term_months else none) }}
         {{ row('Amortization', (m.amortization_months ~ ' months') if m.amortization_months else none) }}
-        {{ row('Annual interest at current balance', s.annual_interest|money) }}
-        {{ row('Your share', m.ownership_pct|pct(0)) }}
-        {{ row('Prepayment', m.prepayment_terms) }}
       </table>
     </div>
     {% if m.term_history %}
@@ -70,27 +68,36 @@
     {% endif %}
     <div class="card mb-3"><div class="card-header bg-white fw-semibold">Security</div>
       <table class="table table-sm mb-0">
-        {{ row('Property type', m.property_type_label) }}
-        {{ row('Value', (m.property_value|money) ~ ((' (appraised ' ~ (m.appraisal_date|d) ~ ')') if m.appraisal_date else '')) if m.property_value else none }}
+        {{ row('Value', m.property_value|money if m.property_value else none) }}
         {{ row('Prior charges', m.prior_charges|money if m.prior_charges else none) }}
         {{ row('LTV (this loan)', s.ltv|pct(1) if s.ltv is not none else none) }}
         {{ row('Combined LTV', s.cltv|pct(1) if s.cltv is not none else none) }}
-        {{ row('PIN / legal', m.pin) }}
-        {{ row('Insurance expiry', m.insurance_expiry|d if m.insurance_expiry else none) }}
-        {{ row('Property tax', m.property_tax_status) }}
       </table>
     </div>
-    <div class="card mb-3"><div class="card-header bg-white fw-semibold">Borrower &amp; parties</div>
+    <div class="card mb-3" id="mortgagees"><div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+      <span>Mortgagees</span>
+      {% if current_user.can_edit %}<a class="small fw-normal" href="{{ url_for('mortgages.edit', mortgage_id=m.id) }}#mortgagees"><i class="bi bi-pencil"></i> Edit</a>{% endif %}
+    </div>
+      {% if m.mortgagees %}
       <table class="table table-sm mb-0">
-        {{ row('Email', m.borrower_email) }}
-        {{ row('Phone', m.borrower_phone) }}
-        {{ row('Guarantors', m.guarantors) }}
-        {{ row('Broker', (m.broker_name or '') ~ ((' — fee ' ~ (m.broker_fee|money)) if m.broker_fee else '')) }}
-        {{ row('Lawyer', m.lawyer_name) }}
+        <thead><tr><th class="fw-normal text-secondary small">Name</th><th class="num fw-normal text-secondary small">Share</th><th class="num fw-normal text-secondary small">Of balance</th></tr></thead>
+        {% for o in m.mortgagees %}
+        <tr><td>{{ o.name }}</td><td class="num">{{ o.share_pct|share }}</td><td class="num">{{ (s.balance * o.share_pct / 100)|money }}</td></tr>
+        {% endfor %}
+        {% if m.mortgagees_unassigned_pct %}
+        <tr class="text-secondary"><td><em>Not assigned</em></td><td class="num">{{ m.mortgagees_unassigned_pct|share }}</td><td class="num">{{ (s.balance * m.mortgagees_unassigned_pct / 100)|money }}</td></tr>
+        {% endif %}
+      </table>
+      {% else %}
+      <div class="card-body small text-secondary">No mortgagees recorded yet.{% if current_user.can_edit %} <a href="{{ url_for('mortgages.edit', mortgage_id=m.id) }}#mortgagees">Add who owns this mortgage</a>.{% endif %}</div>
+      {% endif %}
+    </div>
+    <div class="card mb-3"><div class="card-header bg-white fw-semibold">Other details</div>
+      <table class="table table-sm mb-0">
         {{ row('Lender fee', m.lender_fee|money if m.lender_fee else none) }}
-        {{ row('Renewal fee', m.renewal_fee|money if m.renewal_fee else none) }}
-        {{ row('NSF fee', m.nsf_fee|money if m.nsf_fee else none) }}
+        {{ row('Broker / group', m.broker_name) }}
         {{ row('Bank keywords', m.keywords|join(', ')) }}
+        {{ row('Added by', m.created_by.display_name if m.created_by else none) }}
       </table>
     </div>
     {% if m.notes %}<div class="card mb-3"><div class="card-header bg-white fw-semibold">Notes</div>
@@ -98,20 +105,36 @@
   </div>
 
   <div class="col-lg-8">
-    <div class="row g-3 mb-3">
-      <div class="col-md-6"><div class="card p-3 h-100">
-        <div class="stat-label small text-uppercase text-secondary">Received year to date</div>
-        <div class="d-flex justify-content-between mt-1"><span>Interest</span><span class="num">{{ s.ytd.interest|money }}</span></div>
-        <div class="d-flex justify-content-between"><span>Fees</span><span class="num">{{ s.ytd.fees|money }}</span></div>
-        <div class="d-flex justify-content-between"><span>Principal</span><span class="num">{{ s.ytd.principal|money }}</span></div>
-      </div></div>
-      <div class="col-md-6"><div class="card p-3 h-100">
-        <div class="stat-label small text-uppercase text-secondary">Since funding</div>
-        <div class="d-flex justify-content-between mt-1"><span>Interest</span><span class="num">{{ s.lifetime.interest|money }}</span></div>
-        <div class="d-flex justify-content-between"><span>Fees</span><span class="num">{{ s.lifetime.fees|money }}</span></div>
-        <div class="d-flex justify-content-between"><span>Principal</span><span class="num">{{ s.lifetime.principal|money }}</span></div>
-      </div></div>
+    <div class="card p-3 mb-3">
+      <div class="stat-label small text-uppercase text-secondary">Received this year</div>
+      <div class="d-flex flex-wrap gap-4 mt-1">
+        <span>Interest <span class="num fw-semibold">{{ s.ytd.interest|money }}</span></span>
+        <span>Fees <span class="num fw-semibold">{{ s.ytd.fees|money }}</span></span>
+        <span>Principal <span class="num fw-semibold">{{ s.ytd.principal|money }}</span></span>
+      </div>
     </div>
+
+    {% if history %}
+    {% set icons = {'on_time': ('bi-check-circle-fill status-good', 'Paid on time'), 'late': ('bi-clock-fill status-serious', 'Paid late'),
+                    'missed': ('bi-x-circle-fill status-critical', 'Missed'), 'pending': ('bi-hourglass-split text-secondary', 'Due — within grace period'),
+                    'upcoming': ('bi-circle text-secondary', 'Upcoming')} %}
+    <div class="card mb-3">
+      <div class="card-header bg-white fw-semibold">Payment history</div>
+      <div class="card-body d-flex flex-wrap gap-1 pay-grid">
+        {% for h in history %}
+          {% set icon, label = icons[h.status] %}
+          <div class="pay-cell" title="{{ h.due|d }} · {{ h.amount|money }} · {{ label }}{% if h.paid_on %} ({{ h.paid_on|d }}{% if h.days_late and h.days_late > 0 %}, {{ h.days_late }} days late{% endif %}){% endif %}">
+            <i class="bi {{ icon }}" aria-label="{{ label }}"></i>
+            <div>{{ h.due.strftime('%b') }}<br><span class="text-secondary">{{ h.due.strftime('%y') if h.due.month == 1 or loop.first else '' }}</span></div>
+          </div>
+        {% endfor %}
+      </div>
+      <div class="px-3 pb-2 small text-secondary">
+        <i class="bi bi-check-circle-fill status-good"></i> on time (within 5 days of the due date) ·
+        <i class="bi bi-clock-fill status-serious"></i> late · <i class="bi bi-x-circle-fill status-critical"></i> missed ·
+        <i class="bi bi-hourglass-split"></i> due, in grace · <i class="bi bi-circle"></i> upcoming. Hover for dates.</div>
+    </div>
+    {% endif %}
 
     {% if current_user.can_edit %}
     <div class="card mb-3">
@@ -163,11 +186,10 @@
         <div class="col-md-3"><label class="form-label small mb-1">Payment ($, blank = calculate)</label>
           <input type="number" step="0.01" name="payment_amount" class="form-control form-control-sm" value="{{ m.payment_amount or '' }}"></div>
         <div class="col-md-3"><label class="form-label small mb-1">Renewal fee ($)</label>
-          <input type="number" step="0.01" name="renewal_fee" class="form-control form-control-sm" value="{{ m.renewal_fee or '' }}"></div>
-        <div class="col-md-6"><input name="note" class="form-control form-control-sm" placeholder="Note (optional), e.g. renewal letter signed Oct 2"></div>
-        <div class="col-md-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="record_fee" value="1" id="rf" checked>
-          <label class="form-check-label small" for="rf">Record the fee as income on the start date</label></div></div>
-        <div class="col-md-2 text-end"><button class="btn btn-sm btn-primary">Renew</button></div>
+          <input type="number" step="0.01" name="renewal_fee" class="form-control form-control-sm"></div>
+        <div class="col-md-7"><input name="note" class="form-control form-control-sm" placeholder="Note (optional), e.g. renewal letter signed Oct 2"></div>
+        <div class="col-md-5 text-end"><button class="btn btn-sm btn-primary">Renew</button></div>
+        <div class="col-12 form-text mt-0">A renewal fee is recorded as income on the start date.</div>
         <div class="col-12 form-text">Periods before the start date keep the old rate and payment, so past reports don't change.
           To fix a typo in the current terms instead, use Edit.</div>
       </form>
@@ -207,8 +229,8 @@
       </div>
     </div>
 
-    {% if current_user.is_admin %}
-    <details class="mt-4">
+    {% if current_user.can_edit %}
+    <details class="mt-4" id="delete-mortgage">
       <summary class="text-danger small">Delete this mortgage</summary>
       <form method="post" action="{{ url_for('mortgages.delete', mortgage_id=m.id) }}" class="d-flex gap-2 mt-2" style="max-width:420px">
         {{ csrf_field() }}
@@ -223,6 +245,16 @@
 {% endblock %}
 {% block scripts %}
 <script>
+(function () {
+  // The Delete button at the top opens the confirmation box at the bottom.
+  const box = document.getElementById('delete-mortgage');
+  if (!box) return;
+  const open = () => { box.open = true; box.querySelector('input[name=confirm]').focus(); };
+  document.getElementById('delete-link').addEventListener('click', (e) => {
+    e.preventDefault(); open(); box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+  if (location.hash === '#delete-mortgage') open();
+})();
 (function () {
   const form = document.getElementById('txn-form');
   if (!form) return;

@@ -1,11 +1,14 @@
-# One-click deploy on Render (https://render.com): New → Blueprint → pick this repo.
-# Creates the web service plus a managed PostgreSQL database with daily backups.
+# Free deployment on Render (https://render.com): New → Blueprint → pick this repo.
+# The database lives on Neon's free plan (https://neon.tech) because Render's free
+# Postgres is deleted after 30 days. See DEPLOY.md.
 services:
   - type: web
     name: private-mortgage-manager
     runtime: docker
-    plan: starter
+    plan: free
+    region: ohio            # pick the Neon region "AWS US East 2 (Ohio)" to match
     healthCheckPath: /healthz
+    autoDeploy: true
     envVars:
       - key: PMM_ENV
         value: production
@@ -13,17 +16,12 @@ services:
         generateValue: true
       - key: PMM_TIMEZONE
         value: America/Toronto
-      - key: DATABASE_URL
-        fromDatabase:
-          name: mortgage-db
-          property: connectionString
-      # Set these two in the Render dashboard before the first deploy to create your login,
-      # then you can remove them (the account stays in the database).
-      - key: PMM_ADMIN_EMAIL
+      - key: WEB_CONCURRENCY   # one worker fits the free instance's 512 MB
+        value: "1"
+      # Render asks for these on the first deploy.
+      - key: DATABASE_URL      # Neon connection string (postgresql://…?sslmode=require)
+        sync: false
+      - key: PMM_ADMIN_EMAIL   # your sign-in email (creates the first admin)
         sync: false
       - key: PMM_ADMIN_PASSWORD
         sync: false
-
-databases:
-  - name: mortgage-db
-    plan: basic-256mb

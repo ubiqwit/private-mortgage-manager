@@ -106,8 +106,11 @@ def _require_admin():
 @bp.route("/users")
 def users():
     _require_admin()
+    from ..services.demo import has_demo
+
     recent = AuditLog.query.order_by(AuditLog.at.desc()).limit(50).all()
-    return render_template("auth/users.html", users=User.query.order_by(User.email).all(), roles=ROLES, recent=recent)
+    return render_template("auth/users.html", users=User.query.order_by(User.email).all(), roles=ROLES, recent=recent,
+                           demo_loaded=has_demo())
 
 
 @bp.route("/users/new", methods=["POST"])
@@ -153,6 +156,33 @@ def update_user(user_id):
     return redirect(url_for("auth.users"))
 
 
+@bp.route("/users/<int:user_id>/delete", methods=["GET", "POST"])
+def delete_user(user_id):
+    """Admin: delete a login and every mortgage that user added (after typing their email)."""
+    _require_admin()
+    from ..services import deletion
+
+    user = db.get_or_404(User, user_id)
+    if user.id == g.user.id:
+        flash("You can't delete your own account.", "warning")
+        return redirect(url_for("auth.users"))
+    mortgages = deletion.mortgages_added_by(user)
+    blocked = [(m, problem) for m in mortgages if (problem := deletion.closed_month_problem(m))]
+    if request.method == "POST" and not blocked:
+        if request.form.get("confirm", "").strip().lower() != user.email:
+            flash(f"Type {user.email} to confirm.", "warning")
+        else:
+            email = user.email
+            refs = ", ".join(m.reference for m in mortgages)
+            n = deletion.delete_user(user)
+            audit("user_deleted", f"{email} and {n} mortgage(s) they added" + (f": {refs}" if refs else ""))
+            db.session.commit()
+            flash(f"Deleted {email}" + (f" and the {n} mortgage{'s' if n != 1 else ''} they added." if n else "."),
+                  "success")
+            return redirect(url_for("auth.users"))
+    return render_template("auth/delete_user.html", target_user=user, mortgages=mortgages, blocked=blocked)
+
+
 @bp.route("/export/all.xlsx")
 def export_all():
     """Admin-only full backup of the data as an Excel workbook."""
@@ -164,3 +194,49 @@ def export_all():
     db.session.commit()
     return Response(export_workbook(), mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     headers={"Content-Disposition": f'attachment; filename="mortgage-manager-export-{today():%Y-%m-%d}.xlsx"'})
+
+
+@bp.route("/demo/remove", methods=["POST"])
+def remove_demo_data():
+    _require_admin()
+    from ..services import demo
+
+    n = demo.remove_demo()
+    audit("demo_removed", f"{n} demo mortgages")
+    db.session.commit()
+    flash(f"Removed {n} demo mortgages and everything recorded on them.", "success")
+    return redirect(url_for("auth.users"))
+
+
+def _fields_page(user, back):
+    from ..services import form_fields as ff
+
+    if request.method == "POST":
+        preset = request.form.get("preset")
+        if preset in ff.PRESETS:
+            ff.save_fields(user, ff.PRESETS[preset][2])
+        else:
+            ff.save_fields(user, request.form.getlist("fields"))
+        audit("form_fields_changed", f"{user.email}: {preset or 'custom'}")
+        db.session.commit()
+        who = "Your" if user.id == g.user.id else f"{user.display_name}'s"
+        flash(f"{who} mortgage form now shows {len(ff.visible_fields(user))} of {len(ff.ALL_FIELDS)} fields.", "success")
+        target = request.args.get("next") or ""
+        if target.startswith("/") and not target.startswith("//"):
+            return redirect(target)
+        return redirect(back)
+    return render_template("auth/form_fields.html", target_user=user, groups=ff.GROUPS, required=ff.REQUIRED,
+                           shown=ff.visible_fields(user), presets=ff.PRESETS, current=ff.preset_name(user))
+
+
+@bp.route("/account/fields", methods=["GET", "POST"])
+def form_fields():
+    """Choose which optional fields appear on your mortgage form."""
+    return _fields_page(g.user, url_for("auth.form_fields"))
+
+
+@bp.route("/users/<int:user_id>/fields", methods=["GET", "POST"])
+def user_form_fields(user_id):
+    """Admins can tailor the form for anyone."""
+    _require_admin()
+    return _fields_page(db.get_or_404(User, user_id), url_for("auth.users"))

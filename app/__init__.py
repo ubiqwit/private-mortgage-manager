@@ -40,6 +40,16 @@ def _database_url(instance_path):
     return url
 
 
+def _engine_options(url: str) -> dict:
+    # Serverless databases (e.g. Neon) drop idle connections: test before use, recycle often.
+    options = {"pool_pre_ping": True, "pool_recycle": 280}
+    if "-pooler." in url:
+        # Neon's pooled endpoint (PgBouncer, transaction mode) can't keep server-side prepared
+        # statements across transactions, so turn off psycopg's automatic preparing.
+        options["connect_args"] = {"prepare_threshold": None}
+    return options
+
+
 def create_app(test_config=None):
     app = Flask(__name__, instance_relative_config=True)
     os.makedirs(app.instance_path, exist_ok=True)
@@ -49,7 +59,8 @@ def create_app(test_config=None):
         PRODUCTION=production,
         SECRET_KEY=os.environ.get("PMM_SECRET_KEY") or os.environ.get("SECRET_KEY"),
         SQLALCHEMY_DATABASE_URI=_database_url(app.instance_path),
-        SQLALCHEMY_ENGINE_OPTIONS={"pool_pre_ping": True},
+        # Serverless databases (e.g. Neon) drop idle connections: test before use, recycle often.
+        SQLALCHEMY_ENGINE_OPTIONS=_engine_options(os.environ.get("DATABASE_URL") or ""),
         MAX_CONTENT_LENGTH=20 * 1024 * 1024,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
@@ -81,7 +92,13 @@ def create_app(test_config=None):
             db.create_all()
         elif app.config.get("AUTO_MIGRATE", True):
             _upgrade_schema(app)
-        models.bootstrap_admin_from_env()
+        try:
+            models.bootstrap_admin_from_env()
+        except ValueError as exc:
+            # A bad PMM_ADMIN_* setting shouldn't take the whole site down; say what to fix.
+            db.session.rollback()
+            app.logger.error("Could not create/reset the admin from PMM_ADMIN_EMAIL/PMM_ADMIN_PASSWORD: %s "
+                             "Fix the environment variable and redeploy.", exc)
         # Don't share pooled connections with forked gunicorn workers (--preload).
         db.engine.dispose()
 
@@ -99,6 +116,13 @@ def create_app(test_config=None):
     @app.route("/healthz")
     def health():
         return {"status": "ok"}
+
+    # Started on the first request in each worker (after gunicorn forks), never in tests.
+    from . import keepalive
+
+    @app.before_request
+    def start_keepalive():
+        keepalive.start(app)
 
     from flask import render_template
 
@@ -168,6 +192,10 @@ def _register_filters(app):
         if value is None or value == "":
             return "—"
         return f"{Decimal(str(value)):.{places}f}%"
+
+    from .models import fmt_pct
+
+    app.add_template_filter(fmt_pct, "share")  # 50 -> 50%, 33.70 -> 33.7%
 
     @app.template_filter("d")
     def fmt_date(value):

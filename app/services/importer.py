@@ -6,7 +6,7 @@ import re
 from datetime import date, datetime
 from decimal import Decimal
 
-from ..models import PROPERTY_TYPES, STATUSES
+from ..models import STATUSES
 from . import calc
 from . import statements as st
 
@@ -14,14 +14,9 @@ from . import statements as st
 COLUMNS = [
     ("Reference", "reference", "Optional — e.g. M-001. Generated if blank."),
     ("Borrower name", "borrower_name", "Required"),
-    ("Borrower email", "borrower_email", ""),
-    ("Borrower phone", "borrower_phone", ""),
     ("Property address", "property_address", "Required"),
     ("City", "property_city", ""),
-    ("Province", "property_province", "e.g. ON"),
-    ("Property type", "property_type", "Detached, Semi-detached, Townhouse, Condo, Multi-unit, Commercial, Mixed use, Land, Other"),
     ("Property value", "property_value", "Appraised value"),
-    ("Appraisal date", "appraisal_date", "YYYY-MM-DD"),
     ("Position", "position", "1, 2 or 3"),
     ("Prior charges", "prior_charges", "Balance of mortgages ranking ahead of yours"),
     ("Principal", "principal_amount", "Required — amount advanced"),
@@ -38,21 +33,25 @@ COLUMNS = [
     ("First payment date", "first_payment_date", "Blank = one month after funding"),
     ("Term months", "term_months", "Term or maturity date required"),
     ("Maturity date", "maturity_date", "YYYY-MM-DD"),
-    ("Your share %", "ownership_pct", "100 unless syndicated"),
+    ("Mortgagees", "_mortgagees", "Who owns it and their share, e.g. 9929916 Canada Inc 50%; Suresh Malhotra 50%"),
     ("Lender fee", "lender_fee", ""),
-    ("Broker", "broker_name", ""),
-    ("Broker fee", "broker_fee", ""),
-    ("Lawyer", "lawyer_name", ""),
-    ("Renewal fee", "renewal_fee", ""),
-    ("NSF fee", "nsf_fee", ""),
-    ("Insurance expiry", "insurance_expiry", "YYYY-MM-DD"),
+    ("Broker", "broker_name", "The brokerage or group it came through"),
     ("Status", "status", "Active, In arrears, Default, Matured, Paid out"),
     ("Bank keywords", "match_keywords", "Text on your bank statement when they pay; separate several with ;"),
     ("Notes", "notes", ""),
     ("Current balance", "_balance", "Optional — if principal has been repaid, the balance today"),
     ("Balance as of", "_balance_date", "Date of that balance (default today)"),
 ]
-DATE_FIELDS = {"appraisal_date", "funded_date", "first_payment_date", "maturity_date", "insurance_expiry", "_balance_date"}
+ALIASES = {"Owners": "_mortgagees", "Lenders": "_mortgagees"}  # headers from older templates
+DATE_FIELDS = {"funded_date", "first_payment_date", "maturity_date", "_balance_date"}
+EXAMPLE = {
+    "Borrower name": "Jane Smith", "Property address": "12 Maple Ave", "City": "Toronto", "Property value": 1150000,
+    "Position": 2, "Prior charges": 610000, "Principal": 250000, "Rate %": 10.99, "Rate type": "Fixed",
+    "Compounding": "Monthly", "Payment type": "Interest only", "Payment frequency": "Monthly",
+    "Funded date": "2026-02-01", "First payment date": "2026-03-01", "Term months": 12,
+    "Mortgagees": "Example Holdings Inc 60%; Jane Lender 40%", "Lender fee": 5000, "Broker": "Example Brokerage",
+    "Status": "Active", "Bank keywords": "E-TRANSFER JANE SMITH", "Notes": "Example row — delete before importing",
+}
 
 def _key(text) -> str:
     return re.sub(r"[^a-z0-9]", "", str(text or "").lower())
@@ -68,8 +67,6 @@ def _choice_map(pairs, extra=None):
 
 
 CHOICE_MAPS = {
-    "property_type": _choice_map(PROPERTY_TYPES, {"semi": "semi", "multi-unit": "multi_unit", "multiunit": "multi_unit",
-                                                  "land": "land", "house": "detached", "town house": "townhouse"}),
     "status": _choice_map(STATUSES, {"default": "default", "paid": "paid_out", "arrears": "in_arrears"}),
     "rate_type": {"fixed": "fixed", "variable": "variable", "floating": "variable", "prime": "variable"},
     "compounding": {"monthly": "monthly", "semiannual": "semi_annual", "semiannually": "semi_annual",
@@ -99,10 +96,7 @@ def template_workbook() -> bytes:
         if help_text:
             c.comment = Comment(help_text, "Mortgage Manager")
         ws.column_dimensions[get_column_letter(i)].width = max(14, len(h) + 4)
-    ws.append(["", "Jane Smith", "jane@example.com", "416-555-0100", "12 Maple Ave", "Toronto", "ON", "Detached",
-               1150000, "2026-01-10", 2, 610000, 250000, 10.99, "Fixed", "", "", "Monthly", "Interest only", "Monthly",
-               "", "", "2026-02-01", "2026-03-01", 12, "", 100, 5000, "Example Brokerage", 2500, "", 1000, 300,
-               "2027-01-31", "Active", "E-TRANSFER JANE SMITH", "Example row — delete before importing", "", ""])
+    ws.append([EXAMPLE.get(h, "") for h, _, _ in COLUMNS])
     ws.freeze_panes = "A2"
     help_ws = wb.create_sheet("Instructions")
     help_ws.append(["Column", "What to enter"])
@@ -144,6 +138,7 @@ def parse_rows(filename: str, content: bytes):
     header = [_key(h) for h in rows[0]]
     lookup = {_key(h): field for h, field, _ in COLUMNS}
     lookup.update({_key(field): field for _, field, _ in COLUMNS})
+    lookup.update({_key(alias): field for alias, field in ALIASES.items()})
     cols = {i: lookup[h] for i, h in enumerate(header) if h in lookup}
     if "borrower_name" not in cols.values() or "principal_amount" not in cols.values():
         raise st.StatementError("The first row must be the template's column headers (Borrower name, Principal, …).")

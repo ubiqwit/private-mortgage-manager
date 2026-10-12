@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Mortgage form fields — Private Mortgage Manager{% endblock %}
+{% block content %}
+{% set own = target_user.id == current_user.id %}
+{% if not own %}<a href="{{ url_for('auth.users') }}" class="small text-decoration-none"><i class="bi bi-arrow-left"></i> Users</a>{% endif %}
+<h1 class="h3">Mortgage form fields{% if not own %} · {{ target_user.display_name }}{% endif %}</h1>
+<p class="text-secondary" style="max-width:760px">Choose which fields {{ 'you see' if own else 'this person sees' }} when adding or editing a mortgage.
+  Hidden fields keep any value they already have; they just stay out of the way. Required fields are always shown.</p>
+
+<form method="post" class="mb-4">{{ csrf_field() }}
+  <div class="row g-3" style="max-width:1000px">
+    {% for key, (label, desc, fields) in presets.items() %}
+    <div class="col-md-4">
+      <button name="preset" value="{{ key }}" class="card p-3 h-100 w-100 text-start {{ 'border border-2 border-primary' if current == key else '' }}">
+        <div class="fw-semibold">{{ label }}{% if current == key %} <span class="badge text-bg-primary">current</span>{% endif %}</div>
+        <div class="small text-secondary">{{ desc }}</div>
+        <div class="small mt-1">{{ fields|length }} fields</div>
+      </button>
+    </div>
+    {% endfor %}
+  </div>
+</form>
+
+<form method="post" class="card p-4" style="max-width:1000px">{{ csrf_field() }}
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h2 class="h6 mb-0">Or pick fields one by one{% if not current %} <span class="badge text-bg-secondary">custom</span>{% endif %}</h2>
+    <button class="btn btn-sm btn-primary">Save choices</button>
+  </div>
+  <div class="row g-4">
+    {% for section, fields in groups %}
+    <div class="col-md-6 col-lg-4">
+      <div class="form-section mt-0">{{ section }}</div>
+      {% for name, label in fields %}
+        <div class="form-check">
+          {% if name in required %}
+            <input class="form-check-input" type="checkbox" checked disabled id="ff_{{ name }}">
+            <label class="form-check-label small" for="ff_{{ name }}">{{ label }} <span class="text-secondary">(required)</span></label>
+          {% else %}
+            <input class="form-check-input" type="checkbox" name="fields" value="{{ name }}" id="ff_{{ name }}" {% if name in shown %}checked{% endif %}>
+            <label class="form-check-label small" for="ff_{{ name }}">{{ label }}</label>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+</form>
+{% endblock %}

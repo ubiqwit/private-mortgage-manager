@@ -6,13 +6,6 @@ Bank descriptions and e-transfer memos are written by third parties. A memo such
 FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 
 
-def csv_safe(value):
-    """OWASP CSV-injection defence: neutralise text that a spreadsheet would evaluate."""
-    if isinstance(value, str) and value.startswith(FORMULA_PREFIXES):
-        return "'" + value
-    return value
-
-
 def set_text_cell(cell, value):
     """Write ``value`` to an openpyxl cell, forcing strings to stay plain text."""
     cell.value = value

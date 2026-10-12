@@ -1,4 +1,4 @@
-"""Month-end report: on screen, Excel workbook and CSV."""
+"""Month-end report: on screen and as an Excel workbook, for the whole book or one mortgagee."""
 import re
 from datetime import timedelta
 
@@ -6,7 +6,7 @@ from flask import Blueprint, Response, abort, flash, g, redirect, render_templat
 
 from .. import db
 from ..models import audit
-from ..services import periods, reports
+from ..services import mortgagees, periods, reports
 from ..services.market import latest_prime
 from ..timeutil import today as local_today
 
@@ -25,13 +25,21 @@ def _selected_month():
     return reports.default_month()
 
 
+def _selected_mortgagee():
+    """The mortgagee whose share to report on ('' = the whole book)."""
+    name = request.values.get("mortgagee", "").strip()
+    return name if name in mortgagees.names_in_use() else ""
+
+
 @bp.route("/month-end")
 def month_end():
     year, month = _selected_month()
-    report = reports.month_end_report(year, month, latest_prime())
+    who = _selected_mortgagee()
+    report = reports.month_end_report(year, month, latest_prime(), mortgagee=who or None)
     return render_template("reports/month_end.html", r=report, months=reports.previous_months(),
                            selected=f"{year:04d}-{month:02d}", closed_through=periods.closed_through(),
-                           month_over=report["end"] < local_today())
+                           month_over=report["end"] < local_today(), mortgagee_names=mortgagees.names_in_use(),
+                           who=who)
 
 
 @bp.route("/close", methods=["POST"])
@@ -71,15 +79,10 @@ def reopen_month():
 @bp.route("/month-end.xlsx")
 def month_end_xlsx():
     year, month = _selected_month()
-    report = reports.month_end_report(year, month, latest_prime())
+    who = _selected_mortgagee()
+    report = reports.month_end_report(year, month, latest_prime(), mortgagee=who or None)
     data = reports.month_end_workbook(report, prepared_by=g.user.display_name)
+    slug = re.sub(r"[^a-z0-9]+", "-", who.lower()).strip("-")
+    name = f"mortgage-income-{year:04d}-{month:02d}" + (f"-{slug}" if slug else "")
     return Response(data, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    headers={"Content-Disposition": f'attachment; filename="mortgage-income-{year:04d}-{month:02d}.xlsx"'})
-
-
-@bp.route("/month-end-transactions.csv")
-def month_end_csv():
-    year, month = _selected_month()
-    report = reports.month_end_report(year, month, latest_prime())
-    return Response(reports.transactions_csv(report), mimetype="text/csv",
-                    headers={"Content-Disposition": f'attachment; filename="mortgage-transactions-{year:04d}-{month:02d}.csv"'})
+                    headers={"Content-Disposition": f'attachment; filename="{name}.xlsx"'})

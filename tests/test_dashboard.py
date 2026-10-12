@@ -20,20 +20,24 @@ def test_dashboard_with_demo_book(app, client):
     # The demo book has exactly one borrower two payments behind.
     assert stats["arrears_count"] == 1
     assert any("arrears" in text for _, _, text in stats["alerts"])
-    assert len(stats["income_chart"]["labels"]) == 12
-    assert sum(stats["ladder"]["values"]) == float(stats["total_balance"])
-    assert 0 < stats["wavg_rate"] < 20
-    resp = client.get("/")
-    assert resp.status_code == 200 and b"Capital deployed" in resp.data
+    assert stats["monthly_interest"] > 0 and stats["ytd"]["interest"] > 0
+    page = client.get("/").get_data(as_text=True)
+    for shown in ("Capital deployed", "Monthly interest", "Collected", "Income year to date", "Arrears",
+                  "Needs attention"):
+        assert shown in page
+    for gone in ("Weighted avg", "Maturity ladder", "Concentration", "combined LTV", "Payments due", "Recent activity"):
+        assert gone not in page
+    assert "chart" not in page.lower()
     assert client.get("/mortgages/").status_code == 200
 
 
-def test_upcoming_payments_skip_ones_already_received(client):
+def test_attention_list_is_arrears_and_maturities(client):
     from .test_mortgages import create
 
-    m = create(client, record_lender_fee="")  # first payment Feb 1 2026
-    client.post(f"/mortgages/{m.id}/transactions", data={"type": "payment", "date": "2026-01-30", "amount": "1666.67"})
-    stats = dashboard_stats(today=date(2026, 1, 25))
-    assert [d for d, _, _ in stats["upcoming"]] == [date(2026, 2, 1)]  # Jan 30 payment not yet "received" on Jan 25
-    stats = dashboard_stats(today=date(2026, 2, 1))
-    assert [d for d, _, _ in stats["upcoming"]] == [date(2026, 3, 1)]  # Feb 1 was paid early, so only March shows
+    m = create(client, record_lender_fee="")  # funded Jan 1 2026, matures Jan 1 2027, $1,666.67 due monthly
+    alerts = dashboard_stats(today=date(2026, 3, 10))["alerts"]
+    assert [(level, text.split(" (")[0]) for level, _, text in alerts] == [("critical", "In arrears $3,333.34")]
+    client.post(f"/mortgages/{m.id}/transactions", data={"type": "payment", "date": "2026-03-10", "amount": "3333.34"})
+    alerts = dashboard_stats(today=date(2026, 11, 20))["alerts"]
+    assert [level for level, _, _ in alerts] == ["critical", "warning"]  # missed Apr–Nov; matures in 42 days
+    assert "Matures in 42 days" in alerts[1][2]

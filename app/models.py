@@ -23,17 +23,6 @@ from .timeutil import utcnow
 
 ZERO = Decimal("0.00")
 
-PROPERTY_TYPES = [
-    ("detached", "Detached"),
-    ("semi", "Semi-detached"),
-    ("townhouse", "Townhouse"),
-    ("condo", "Condo"),
-    ("multi_unit", "Multi-unit residential"),
-    ("commercial", "Commercial"),
-    ("mixed_use", "Mixed use"),
-    ("land", "Vacant land"),
-    ("other", "Other"),
-]
 STATUSES = [
     ("active", "Active"),
     ("in_arrears", "In arrears"),
@@ -69,20 +58,13 @@ class Mortgage(TimestampMixin, db.Model):
 
     # Borrower
     borrower_name = db.Column(db.String(200), nullable=False)
-    borrower_email = db.Column(db.String(200))
-    borrower_phone = db.Column(db.String(50))
-    guarantors = db.Column(db.String(300))
 
     # Security
     property_address = db.Column(db.String(300), nullable=False)
     property_city = db.Column(db.String(100))
-    property_province = db.Column(db.String(50), default="ON")
-    property_type = db.Column(db.String(30), default="detached")
     property_value = db.Column(db.Numeric(14, 2))
-    appraisal_date = db.Column(db.Date)
     position = db.Column(db.Integer, default=1)  # 1st, 2nd, 3rd charge
     prior_charges = db.Column(db.Numeric(14, 2), default=0)  # balance of charges ranking ahead
-    pin = db.Column(db.String(50))  # land registry PIN / legal description reference
 
     # Loan terms
     principal_amount = db.Column(db.Numeric(14, 2), nullable=False)
@@ -99,22 +81,15 @@ class Mortgage(TimestampMixin, db.Model):
     first_payment_date = db.Column(db.Date, nullable=False)
     term_months = db.Column(db.Integer)
     maturity_date = db.Column(db.Date, nullable=False)
-    ownership_pct = db.Column(db.Numeric(6, 2), default=100)  # your share if syndicated
 
-    # Fees & parties
     lender_fee = db.Column(db.Numeric(12, 2), default=0)
-    broker_name = db.Column(db.String(200))
-    broker_fee = db.Column(db.Numeric(12, 2), default=0)
-    lawyer_name = db.Column(db.String(200))
-    renewal_fee = db.Column(db.Numeric(12, 2), default=0)
-    nsf_fee = db.Column(db.Numeric(12, 2), default=0)
-    prepayment_terms = db.Column(db.String(300))
-    insurance_expiry = db.Column(db.Date)
-    property_tax_status = db.Column(db.String(100))
+    broker_name = db.Column(db.String(200))  # brokerage / group the mortgage came through
 
     status = db.Column(db.String(20), default="active", nullable=False)
     match_keywords = db.Column(db.Text)  # one per line; used to match bank deposits
     notes = db.Column(db.Text)
+    # Who added it. Deleting that user deletes their mortgages too (see services.deletion).
+    created_by_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), index=True)
 
     transactions = db.relationship(
         "MortgageTransaction",
@@ -128,6 +103,25 @@ class Mortgage(TimestampMixin, db.Model):
         cascade="all, delete-orphan",
         order_by="TermHistory.valid_until",
     )
+    created_by = db.relationship("User", foreign_keys=[created_by_id])
+    mortgagees = db.relationship(
+        "Mortgagee",
+        back_populates="mortgage",
+        cascade="all, delete-orphan",
+        order_by="Mortgagee.sort_order",
+    )
+
+    @property
+    def mortgagees_label(self):
+        """e.g. "9929916 Canada Inc 50%, Suresh Malhotra 50%" ('' if none recorded)."""
+        return ", ".join(f"{o.name} {fmt_pct(o.share_pct)}" for o in self.mortgagees)
+
+    @property
+    def mortgagees_unassigned_pct(self):
+        """Share not yet assigned to a mortgagee (0 when complete or none recorded)."""
+        if not self.mortgagees:
+            return Decimal(0)
+        return max(Decimal(100) - sum((o.share_pct for o in self.mortgagees), Decimal(0)), Decimal(0))
 
     # ----- labels -------------------------------------------------------
     @property
@@ -152,10 +146,6 @@ class Mortgage(TimestampMixin, db.Model):
     @property
     def display_status_label(self):
         return dict(STATUSES).get(self.display_status, self.display_status)
-
-    @property
-    def property_type_label(self):
-        return dict(PROPERTY_TYPES).get(self.property_type, self.property_type)
 
     @property
     def is_open(self):
@@ -325,6 +315,26 @@ class MortgageTransaction(TimestampMixin, db.Model):
         return -amt if self.type in ("advance", "nsf", "funding") else amt
 
 
+def fmt_pct(value) -> str:
+    """50 -> '50%', 33.70 -> '33.7%'."""
+    text = f"{Decimal(value):f}"
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text + "%"
+
+
+class Mortgagee(db.Model):
+    """Who owns (lent) a mortgage and their share of it."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    mortgage_id = db.Column(db.Integer, db.ForeignKey("mortgage.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = db.Column(db.String(200), nullable=False)
+    share_pct = db.Column(db.Numeric(6, 2), nullable=False)
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
+
+    mortgage = db.relationship("Mortgage", back_populates="mortgagees")
+
+
 class TermHistory(db.Model):
     """Terms that applied up to and including ``valid_until``. Written when a mortgage is
     renewed or its rate changes, so earlier periods keep their original rate and payment."""
@@ -458,6 +468,7 @@ class User(TimestampMixin, db.Model):
     role = db.Column(db.String(20), nullable=False, default="admin")
     active = db.Column(db.Boolean, nullable=False, default=True)
     last_login_at = db.Column(db.DateTime)
+    form_fields = db.Column(db.Text)  # JSON list of mortgage-form fields shown; NULL = all
 
     def set_password(self, password: str):
         import secrets
@@ -522,17 +533,25 @@ class PendingUpload(db.Model):
 def bootstrap_admin_from_env():
     """Create the first admin from PMM_ADMIN_EMAIL / PMM_ADMIN_PASSWORD if no users exist.
 
-    Handy on hosting platforms where you cannot run a shell command before first use.
+    Handy on hosting platforms without shell access (e.g. Render's free plan). Setting
+    PMM_ADMIN_RESET=1 as well is the locked-out recovery path: on start-up that account's
+    password is reset (or the account re-created) and it is made an active admin.
     """
     import os
 
-    email = os.environ.get("PMM_ADMIN_EMAIL")
+    email = (os.environ.get("PMM_ADMIN_EMAIL") or "").strip().lower()
     password = os.environ.get("PMM_ADMIN_PASSWORD")
     if not email or not password:
         return
-    if db.session.query(User.id).first():
+    reset = os.environ.get("PMM_ADMIN_RESET") == "1"
+    if db.session.query(User.id).first() and not reset:
         return
-    user = User(email=email.strip().lower(), name="Owner", role="admin")
-    user.set_password(password)
-    db.session.add(user)
+    user = User.query.filter_by(email=email).first()
+    if user is None:
+        user = User(email=email, name="Owner")
+        db.session.add(user)
+    user.set_password(password)  # also signs out every existing session for this account
+    user.role, user.active = "admin", True
+    if reset:
+        db.session.add(AuditLog(action="admin_reset_from_env", detail=email))
     db.session.commit()

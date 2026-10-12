@@ -20,7 +20,6 @@ main { min-width: 0; }
 .badge-status-default { background: #dc3545; }
 .badge-status-matured { background: #6f42c1; }
 .badge-status-paid_out { background: #6c757d; }
-.chart-box { position: relative; height: 260px; }
 .form-section { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: #6c757d; border-bottom: 1px solid #dee2e6; padding-bottom: .25rem; margin: 1.25rem 0 .75rem; }
 .desc-cell { max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .user-box a, .user-box .btn-link { color: #c9d1e4; text-decoration: none; font-size: .8rem; }
@@ -32,9 +31,6 @@ main { min-width: 0; }
 .status-critical { color: #d03b3b; }
 .meter { height: 6px; border-radius: 3px; background: #cde2fb; overflow: hidden; }
 .meter-fill { height: 100%; background: #2a78d6; border-radius: 3px; }
-.conc-row { margin-bottom: .45rem; }
-.conc-track { height: 6px; border-radius: 3px; background: #f0efec; overflow: hidden; }
-.conc-fill { height: 100%; background: #2a78d6; border-radius: 3px; }
 .stat-card .stat-value, .hero-value { font-variant-numeric: normal; }
 @media (max-width: 575.98px) {
   .stat-card .stat-value { font-size: 1.2rem; }
@@ -50,3 +46,5 @@ main { min-width: 0; }
   .table-responsive { overflow: visible !important; }
 }
 .stat-card .stat-value-sm { font-size: 1.15rem; white-space: nowrap; }
+.pay-cell { width: 44px; text-align: center; font-size: .72rem; line-height: 1.15; padding: 4px 0; border-radius: 6px; background: #f8f9fa; }
+.pay-cell .bi { font-size: 1.05rem; }
