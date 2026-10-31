@@ -108,15 +108,15 @@ def test_mortgagee_share_report(client):
         client.post(f"/mortgages/{m.id}/transactions", data={"type": "payment", "date": "2026-02-01", "amount": "1666.67"})
         return m
 
-    new("1 Shared St", ("9929916 Canada Inc", "60"), ("Suresh Malhotra", "40"))
-    new("2 Solo Ave", ("Suresh Malhotra", "100"))
-    new("3 Other Rd", ("1022409 Ontario Inc.", "100"))
+    new("1 Shared St", ("Example Holdings Inc", "60"), ("Robin Avery", "40"))
+    new("2 Solo Ave", ("Robin Avery", "100"))
+    new("3 Other Rd", ("1234567 Ontario Inc.", "100"))
 
     whole = reports.month_end_report(2026, 2)
     assert len(whole["rows"]) == 3 and whole["totals"]["interest"] == Decimal("1666.67") * 3
     assert whole["bank"] is not None
 
-    r = reports.month_end_report(2026, 2, mortgagee="Suresh Malhotra")
+    r = reports.month_end_report(2026, 2, mortgagee="Robin Avery")
     rows = {row["m"].property_address: row for row in r["rows"]}
     assert set(rows) == {"1 Shared St", "2 Solo Ave"}
     assert rows["1 Shared St"]["share_pct"] == Decimal("40.00")
@@ -127,15 +127,15 @@ def test_mortgagee_share_report(client):
     assert r["bank"] is None and len(r["transactions"]) == 2         # their mortgages only, full amounts
     assert r["ytd"]["total"] == Decimal("2333.34")
 
-    page = client.get("/reports/month-end?month=2026-02&mortgagee=Suresh Malhotra").get_data(as_text=True)
-    assert "Suresh Malhotra&#39;s share" in page and ">M-003<" not in page and "Bank reconciliation" not in page
+    page = client.get("/reports/month-end?month=2026-02&mortgagee=Robin Avery").get_data(as_text=True)
+    assert "Robin Avery&#39;s share" in page and ">M-003<" not in page and "Bank reconciliation" not in page
     assert "Close books" not in page  # closing applies to the whole book, so it's offered there
-    resp = client.get("/reports/month-end.xlsx?month=2026-02&mortgagee=Suresh Malhotra")
-    assert "mortgage-income-2026-02-suresh-malhotra.xlsx" in resp.headers["Content-Disposition"]
+    resp = client.get("/reports/month-end.xlsx?month=2026-02&mortgagee=Robin Avery")
+    assert "mortgage-income-2026-02-robin-avery.xlsx" in resp.headers["Content-Disposition"]
     wb = load_workbook(io.BytesIO(resp.data))
     assert wb.sheetnames == ["Summary", "Transactions", "YTD income"]
     ws = wb["Summary"]
-    assert ws["A1"].value == "Mortgage income summary — February 2026 — Suresh Malhotra's share"
+    assert ws["A1"].value == "Mortgage income summary — February 2026 — Robin Avery's share"
     header = [c.value for c in ws[4]]
     assert header[6] == "Share %" and "Variance" not in header
     # An unknown name falls back to the whole book.

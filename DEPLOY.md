@@ -4,9 +4,7 @@
 |---|---|---|
 | App | **Render** free web service | Would sleep after 15 idle minutes; the app keeps itself awake (step 5). |
 | Database | **Neon** free Postgres | 0.5 GB, doesn't expire. Render's own free database is deleted after 30 days, so don't use it. |
-| Address | `mortgages.shaunmalhotra.com` | A subdomain of your domain at Namecheap. Your GitHub Pages site on `shaunmalhotra.com` is untouched. |
-
-GitHub Pages only serves static pages, so it can't run this app — it keeps hosting your main site.
+| Address | `mortgages.example.com` | Optional: a subdomain of a domain you own. Your main site on `example.com` is untouched. |
 
 ## 1. Create the database (Neon)
 
@@ -29,16 +27,16 @@ GitHub Pages only serves static pages, so it can't run this app — it keeps hos
 4. **Deploy Blueprint**. The first build takes 5–10 minutes; the service shows **Live** when done.
 5. Click the service's URL (`https://private-mortgage-manager-xxxx.onrender.com`) and sign in to check it works.
 
-## 3. Use your domain (Namecheap)
+## 3. Use your own domain (optional)
 
-1. In Render: service → **Settings → Custom Domains → Add Custom Domain** → `mortgages.shaunmalhotra.com`.
+1. In Render: service → **Settings → Custom Domains → Add Custom Domain** → `mortgages.example.com`.
    Render shows the target to point at (your `…onrender.com` host name).
-2. In Namecheap: **Domain List → shaunmalhotra.com → Manage → Advanced DNS → Add New Record**:
+2. At your domain registrar, open the DNS settings for `example.com` and add a record:
    - Type **CNAME Record**, Host **`mortgages`**, Value **the `…onrender.com` host name from Render**, TTL Automatic.
-   - Leave the existing GitHub Pages records alone.
+   - Leave your existing records alone.
 3. Back in Render, click **Verify**. DNS can take a few minutes (rarely up to an hour). Render then issues
    the HTTPS certificate automatically.
-4. Open <https://mortgages.shaunmalhotra.com> and sign in.
+4. Open `https://mortgages.example.com` and sign in.
 
 ## 4. First-day checklist
 

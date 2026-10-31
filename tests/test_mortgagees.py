@@ -37,12 +37,12 @@ def with_mortgagees(*rows):
 
 @pytest.mark.parametrize("text, expected", [
     ("", []),
-    ("Suresh Malhotra", [("Suresh Malhotra", 100)]),
-    ("9929916 Canada Inc 50%; Suresh Malhotra 50%", [("9929916 Canada Inc", 50), ("Suresh Malhotra", 50)]),
-    ("1022409 50%, CFT 33.7%, 9929916 16.3%", [("1022409", 50), ("CFT", Decimal("33.7")), ("9929916", Decimal("16.3"))]),
-    ("Sal; Suresh", [("Sal", 50), ("Suresh", 50)]),
+    ("Robin Avery", [("Robin Avery", 100)]),
+    ("Example Holdings Inc 50%; Robin Avery 50%", [("Example Holdings Inc", 50), ("Robin Avery", 50)]),
+    ("1234567 50%, ABC 30.5%, 7654321 19.5%", [("1234567", 50), ("ABC", Decimal("30.5")), ("7654321", Decimal("19.5"))]),
+    ("Ann; Bob", [("Ann", 50), ("Bob", 50)]),
     ("A 40%; B; C", [("A", 40), ("B", 30), ("C", 30)]),
-    ("1022409 Ontario Inc. 50%", [("1022409 Ontario Inc.", 50)]),
+    ("1234567 Ontario Inc. 50%", [("1234567 Ontario Inc.", 50)]),
     ("Smith, Jones & Co", [("Smith, Jones & Co", 100)]),  # a comma inside a name isn't a separator
 ])
 def test_parse_text(text, expected):
@@ -70,19 +70,19 @@ def test_blank_shares_split_the_rest_exactly():
 # --- form --------------------------------------------------------------------------
 
 def test_create_and_edit_mortgagees(client):
-    resp = client.post("/mortgages/new", data=with_mortgagees(("9929916 Canada Inc", "60"), ("Suresh Malhotra", ""),
+    resp = client.post("/mortgages/new", data=with_mortgagees(("Example Holdings Inc", "60"), ("Robin Avery", ""),
                                                               ("", "")))
     assert resp.status_code == 302
     m = Mortgage.query.one()
-    assert owners(m) == [("9929916 Canada Inc", 60), ("Suresh Malhotra", 40)]
+    assert owners(m) == [("Example Holdings Inc", 60), ("Robin Avery", 40)]
 
     form = client.get(f"/mortgages/{m.id}/edit").get_data(as_text=True)
-    assert 'value="9929916 Canada Inc"' in form and 'value="60"' in form
-    assert '<option value="Suresh Malhotra">' in form  # suggestions
+    assert 'value="Example Holdings Inc"' in form and 'value="60"' in form
+    assert '<option value="Robin Avery">' in form  # suggestions
 
-    resp = client.post(f"/mortgages/{m.id}/edit", data=with_mortgagees(("Suresh Malhotra", "100")))
+    resp = client.post(f"/mortgages/{m.id}/edit", data=with_mortgagees(("Robin Avery", "100")))
     assert resp.status_code == 302
-    assert owners(m) == [("Suresh Malhotra", 100)]
+    assert owners(m) == [("Robin Avery", 100)]
     assert Mortgagee.query.count() == 1  # replaced, not added
 
     client.post(f"/mortgages/{m.id}/edit", data=with_mortgagees(("", "")))
@@ -116,8 +116,8 @@ def test_old_owners_form_setting_still_shows_mortgagees(client):
 # --- list, detail, dashboard, reports, import --------------------------------------
 
 def test_list_columns_filter_and_share(client):
-    client.post("/mortgages/new", data=with_mortgagees(("9929916 Canada Inc", "50"), ("Suresh Malhotra", "50")))
-    client.post("/mortgages/new", data={**with_mortgagees(("Suresh Malhotra", "25")), "property_address": "9 Other Rd"})
+    client.post("/mortgages/new", data=with_mortgagees(("Example Holdings Inc", "50"), ("Robin Avery", "50")))
+    client.post("/mortgages/new", data={**with_mortgagees(("Robin Avery", "25")), "property_address": "9 Other Rd"})
     client.post("/mortgages/new", data={**BASE, "property_address": "1 Nobody Lane"})
 
     page = client.get("/mortgages/").get_data(as_text=True)
@@ -127,12 +127,12 @@ def test_list_columns_filter_and_share(client):
     assert "Original principal" in head and "Balance" in head and "Mortgagees" in head
     assert "Jane Smith" not in page  # borrower not shown
 
-    only = client.get("/mortgages/?mortgagee=Suresh Malhotra").get_data(as_text=True)
+    only = client.get("/mortgages/?mortgagee=Robin Avery").get_data(as_text=True)
     assert "12 Maple Ave" in only and "9 Other Rd" in only and "1 Nobody Lane" not in only
     # 50% + 25% of two $200,000 loans.
-    assert "Suresh Malhotra&#39;s share of the balance" in only or "Suresh Malhotra's share of the balance" in only
+    assert "Robin Avery&#39;s share of the balance" in only or "Robin Avery's share of the balance" in only
     assert "$150,000.00" in only
-    assert "9 Other Rd" in client.get("/mortgages/?q=suresh").get_data(as_text=True)
+    assert "9 Other Rd" in client.get("/mortgages/?q=robin").get_data(as_text=True)
 
 
 def test_detail_shows_shares_of_balance(client):
@@ -152,16 +152,16 @@ def test_reports_list_mortgagees(client):
 
 
 def test_import_mortgagees(client):
-    resp = post(client, csv_with({**IMPORT_ROW, "Mortgagees": "9929916 Canada Inc 50%; Suresh Malhotra 50%"}))
+    resp = post(client, csv_with({**IMPORT_ROW, "Mortgagees": "Example Holdings Inc 50%; Robin Avery 50%"}))
     assert resp.status_code == 302
-    assert owners(Mortgage.query.one()) == [("9929916 Canada Inc", 50), ("Suresh Malhotra", 50)]
+    assert owners(Mortgage.query.one()) == [("Example Holdings Inc", 50), ("Robin Avery", 50)]
 
 
 def test_import_older_owners_header(client):
     content = (b"Borrower name,Property address,Principal,Rate %,Funded date,Term months,Owners\n"
-               b"Jane,12 Maple Ave,250000,10,2026-01-01,12,9929916 Canada Inc\n")
+               b"Jane,12 Maple Ave,250000,10,2026-01-01,12,Example Holdings Inc\n")
     assert post(client, content).status_code == 302
-    assert owners(Mortgage.query.one()) == [("9929916 Canada Inc", 100)]
+    assert owners(Mortgage.query.one()) == [("Example Holdings Inc", 100)]
 
 
 def test_import_rejects_bad_shares(client):
@@ -198,9 +198,9 @@ def test_upgrade_from_companies_makes_each_company_a_mortgagee(tmp_path):
         _add_mortgages("M-001", "M-002", "M-003")
         downgrade(directory=MIGRATIONS_DIR, revision="b376b2c09d2e")  # the companies release
         with db.engine.begin() as conn:
-            conn.execute(sa.text("UPDATE company SET name = 'MFT Holdings Inc.' WHERE id = 1"))
+            conn.execute(sa.text("UPDATE company SET name = 'Northwind Holdings Inc.' WHERE id = 1"))
             conn.execute(sa.text("INSERT INTO company (id, name, created_at, updated_at) "
-                                 "VALUES (2, 'Suresh Malhotra', '2026-10-05', '2026-10-05')"))
+                                 "VALUES (2, 'Robin Avery', '2026-10-05', '2026-10-05')"))
             conn.execute(sa.text("UPDATE mortgage SET company_id = 2, reference = 'M-001' WHERE reference = 'M-003'"))
             conn.execute(sa.text("DELETE FROM setting WHERE key LIKE 'books_closed_through%'"))
             conn.execute(sa.text("INSERT INTO setting (key, value) VALUES ('books_closed_through:1', '2026-08-31'), "
@@ -208,8 +208,8 @@ def test_upgrade_from_companies_makes_each_company_a_mortgagee(tmp_path):
         upgrade(directory=MIGRATIONS_DIR)
         db.session.remove()
         rows = {m.borrower_name: m for m in Mortgage.query.all()}
-        assert owners(rows["M-001"]) == [("MFT Holdings Inc.", 100)]
-        assert owners(rows["M-003"]) == [("Suresh Malhotra", 100)] and rows["M-003"].reference == "M-001-2"
+        assert owners(rows["M-001"]) == [("Northwind Holdings Inc.", 100)]
+        assert owners(rows["M-003"]) == [("Robin Avery", 100)] and rows["M-003"].reference == "M-001-2"
         assert Setting.get("books_closed_through") == "2026-08-31"
         assert "company" not in sa.inspect(db.engine).get_table_names()
 
@@ -220,9 +220,9 @@ def test_upgrade_from_owners_text(tmp_path):
         _add_mortgages("M-001", "M-002")
         downgrade(directory=MIGRATIONS_DIR, revision="77dff3b1fd16")  # the owners-text release
         with db.engine.begin() as conn:
-            conn.execute(sa.text("UPDATE mortgage SET owners = 'Sal & Suresh 50-50' WHERE reference = 'M-001'"))
+            conn.execute(sa.text("UPDATE mortgage SET owners = 'Ann & Bob 50-50' WHERE reference = 'M-001'"))
         upgrade(directory=MIGRATIONS_DIR)
         db.session.remove()
         rows = {m.reference: m for m in Mortgage.query.all()}
-        assert owners(rows["M-001"]) == [("Sal & Suresh 50-50", 100)]
+        assert owners(rows["M-001"]) == [("Ann & Bob 50-50", 100)]
         assert owners(rows["M-002"]) == []

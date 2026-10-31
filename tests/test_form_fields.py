@@ -21,13 +21,13 @@ def test_default_shows_everything_and_presets_hide_fields(client):
 
 
 def test_hidden_fields_keep_their_values_on_edit(client):
-    m = create(client, broker_name="Olympia Mortgages", prior_charges="50000")
+    m = create(client, broker_name="Example Brokerage", prior_charges="50000")
     client.post("/account/fields", data={"preset": "simple"})
     simple = {k: v for k, v in BASE.items() if k in ff.SIMPLE}
     resp = client.post(f"/mortgages/{m.id}/edit", data={**simple, "interest_rate": "11"})
     assert resp.status_code == 302
     m = db.session.get(Mortgage, m.id)
-    assert m.interest_rate == Decimal("11") and m.broker_name == "Olympia Mortgages" and m.prior_charges == 50000
+    assert m.interest_rate == Decimal("11") and m.broker_name == "Example Brokerage" and m.prior_charges == 50000
 
 
 def test_new_mortgage_with_simple_form_uses_defaults(client):
