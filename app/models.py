@@ -113,12 +113,10 @@ class Mortgage(TimestampMixin, db.Model):
 
     @property
     def mortgagees_label(self):
-        """e.g. "9929916 Canada Inc 50%, Suresh Malhotra 50%" ('' if none recorded)."""
         return ", ".join(f"{o.name} {fmt_pct(o.share_pct)}" for o in self.mortgagees)
 
     @property
     def mortgagees_unassigned_pct(self):
-        """Share not yet assigned to a mortgagee (0 when complete or none recorded)."""
         if not self.mortgagees:
             return Decimal(0)
         return max(Decimal(100) - sum((o.share_pct for o in self.mortgagees), Decimal(0)), Decimal(0))
@@ -138,7 +136,6 @@ class Mortgage(TimestampMixin, db.Model):
 
     @property
     def display_status(self):
-        """Stored status, upgraded to "matured" when an active loan is past its maturity date."""
         if self.status in ("active", "in_arrears") and self.maturity_date < local_today():
             return "matured"
         return self.status
@@ -157,16 +154,12 @@ class Mortgage(TimestampMixin, db.Model):
 
     # ----- rates & payments --------------------------------------------
     def terms_on(self, day: date):
-        """The terms (rate, payment…) in force on ``day``: a :class:`TermHistory` row for
-        days before a renewal/rate change, otherwise the mortgage's current fields."""
         for h in self.term_history:  # ordered by valid_until
             if day <= h.valid_until:
                 return h
         return self
 
     def effective_rate(self, prime=None, on: date | None = None) -> Decimal:
-        """Annual rate on ``on`` (default today). Variable loans follow prime + spread,
-        subject to the floor — using prime as it was on that day when ``on`` is given."""
         terms = self.terms_on(on or local_today())
         if terms.rate_type == "variable" and terms.prime_spread is not None:
             if on is not None:
@@ -192,17 +185,13 @@ class Mortgage(TimestampMixin, db.Model):
         return calc.interest_only_payment(balance, rate, terms.compounding, self.payment_frequency)
 
     def regular_payment(self, prime=None) -> Decimal:
-        """The payment under today's terms (interest-only: on today's balance)."""
         return self._payment(self.terms_on(local_today()), self.effective_rate(prime), self.balance())
 
     def scheduled_payment(self, due: date, prime=None) -> Decimal:
-        """Payment owed on ``due``, under the terms and balance of the period it pays for —
-        so past dues stay correct after a prepayment, renewal or prime change."""
         day = due - timedelta(days=1)
         return self._payment(self.terms_on(day), self.effective_rate(prime, on=day), self.balance(as_of=day))
 
     def scheduled_total(self, start=None, end=None, prime=None) -> Decimal:
-        """Sum of scheduled payments due in the window, skipping dates on/after a payout."""
         return sum(
             (self.scheduled_payment(d, prime) for d in self.due_dates(start=start, end=end) if self.balance(as_of=d) > 0),
             ZERO,
@@ -266,7 +255,6 @@ class Mortgage(TimestampMixin, db.Model):
         )
 
     def arrears(self, as_of: date | None = None, prime=None, grace_days: int = ARREARS_GRACE_DAYS) -> Decimal:
-        """Scheduled payments more than ``grace_days`` past due, minus regular payments received."""
         as_of = as_of or local_today()
         if self.status == "paid_out":
             return ZERO
@@ -277,7 +265,6 @@ class Mortgage(TimestampMixin, db.Model):
         return (self.maturity_date - (as_of or local_today())).days
 
     def income_between(self, start: date, end: date):
-        """Cash received split into interest/principal/fees for a date range."""
         out = {"interest": ZERO, "principal": ZERO, "fees": ZERO, "total": ZERO}
         for t in self.transactions:
             if start <= t.date <= end and t.type in INCOME_TYPES:
@@ -310,13 +297,11 @@ class MortgageTransaction(TimestampMixin, db.Model):
 
     @property
     def signed_amount(self) -> Decimal:
-        """Cash in (+) / out (-) from the lender's point of view."""
         amt = Decimal(str(self.amount))
         return -amt if self.type in ("advance", "nsf", "funding") else amt
 
 
 def fmt_pct(value) -> str:
-    """50 -> '50%', 33.70 -> '33.7%'."""
     text = f"{Decimal(value):f}"
     if "." in text:
         text = text.rstrip("0").rstrip(".")
@@ -324,8 +309,6 @@ def fmt_pct(value) -> str:
 
 
 class Mortgagee(db.Model):
-    """Who owns (lent) a mortgage and their share of it."""
-
     id = db.Column(db.Integer, primary_key=True)
     mortgage_id = db.Column(db.Integer, db.ForeignKey("mortgage.id", ondelete="CASCADE"), nullable=False, index=True)
     name = db.Column(db.String(200), nullable=False)
@@ -336,9 +319,6 @@ class Mortgagee(db.Model):
 
 
 class TermHistory(db.Model):
-    """Terms that applied up to and including ``valid_until``. Written when a mortgage is
-    renewed or its rate changes, so earlier periods keep their original rate and payment."""
-
     id = db.Column(db.Integer, primary_key=True)
     mortgage_id = db.Column(db.Integer, db.ForeignKey("mortgage.id"), nullable=False, index=True)
     valid_until = db.Column(db.Date, nullable=False)

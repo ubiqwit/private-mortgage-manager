@@ -60,7 +60,7 @@ def complete(pairs):
 
 
 def parse_text(text):
-    """'9929916 Canada Inc 50%; Suresh Malhotra 50%' -> [(name, pct)].
+    """Parse a string of mortgagee names and shares into a list of (name, pct) tuples.
 
     Separate mortgagees with ';' (or ',' when each part has its own %). A name without a
     share gets what's left of 100%.

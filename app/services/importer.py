@@ -33,7 +33,7 @@ COLUMNS = [
     ("First payment date", "first_payment_date", "Blank = one month after funding"),
     ("Term months", "term_months", "Term or maturity date required"),
     ("Maturity date", "maturity_date", "YYYY-MM-DD"),
-    ("Mortgagees", "_mortgagees", "Who owns it and their share, e.g. 9929916 Canada Inc 50%; Suresh Malhotra 50%"),
+    ("Mortgagees", "_mortgagees", "Who owns it and their share, e.g. 233221 Canada Inc 50%; David Attenborough 50%"),
     ("Lender fee", "lender_fee", ""),
     ("Broker", "broker_name", "The brokerage or group it came through"),
     ("Status", "status", "Active, In arrears, Default, Matured, Paid out"),
